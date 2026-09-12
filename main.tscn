@@ -1,0 +1,29 @@
+[gd_scene format=3 uid="uid://cqow47bch5ocs"]
+
+[ext_resource type="Script" uid="uid://c1yh3u8s3mux" path="res://Player.cs" id="1_0xm2m"]
+[ext_resource type="Script" uid="uid://df26ddt34kvqx" path="res://Main.cs" id="1_1bvp3"]
+[ext_resource type="Texture2D" uid="uid://4q335xxs2p" path="res://icon.svg" id="2_h2yge"]
+[ext_resource type="PackedScene" uid="uid://2oqfqxx5b61g" path="res://enemy.tscn" id="4_lquwl"]
+[ext_resource type="PackedScene" uid="uid://c1t72k6odd4xv" path="res://wall.tscn" id="5_7mycd"]
+
+[sub_resource type="RectangleShape2D" id="RectangleShape2D_dso37"]
+size = Vector2(24, 24)
+
+[node name="Main" type="Node2D" unique_id=1899355104]
+script = ExtResource("1_1bvp3")
+
+[node name="Player" type="CharacterBody2D" parent="." unique_id=84754245]
+script = ExtResource("1_0xm2m")
+
+[node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=1733064919]
+scale = Vector2(0.3, 0.3)
+texture = ExtResource("2_h2yge")
+
+[node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=1991409769]
+shape = SubResource("RectangleShape2D_dso37")
+
+[node name="Enemy" parent="." unique_id=1996207754 instance=ExtResource("4_lquwl")]
+position = Vector2(160, 0)
+
+[node name="Wall" parent="." unique_id=1899974467 instance=ExtResource("5_7mycd")]
+position = Vector2(160, 0)
