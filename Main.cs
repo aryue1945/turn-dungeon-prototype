@@ -2,153 +2,174 @@ using Godot;
 
 public partial class Main : Node2D
 {
-	private const float TileSize = 32.0f;
-	private const int RoomWidth = 15;
-	private const int RoomHeight = 11;
+    private const float TileSize = 32.0f;
+    private const int RoomWidth = 15;
+    private const int RoomHeight = 11;
 
-	private static readonly Vector2 RoomOrigin = new(64, 64);
+    private static readonly Vector2 RoomOrigin = new(64, 64);
 
-	private readonly RandomNumberGenerator _random = new();
+    private readonly RandomNumberGenerator _random = new();
 
-	private Player _player;
-	private Enemy _enemy;
+    private Player _player;
+    private Enemy _enemy;
+    private Label _healthLabel;
 
-	private PackedScene _enemyScene;
-	private PackedScene _wallScene;
+    private PackedScene _enemyScene;
+    private PackedScene _wallScene;
 
-	public override void _Ready()
-	{
-		_player = GetNode<Player>("Player");
+    public override void _Ready()
+    {
+        _player = GetNode<Player>("Player");
 
-		_enemyScene =
-			GD.Load<PackedScene>("res://Enemy.tscn");
+        _enemyScene = GD.Load<PackedScene>("res://enemy.tscn");
+        _wallScene = GD.Load<PackedScene>("res://wall.tscn");
 
-		_wallScene =
-			GD.Load<PackedScene>("res://Wall.tscn");
+        _random.Randomize();
 
-		_random.Randomize();
+        CreateRoom();
+        PlacePlayerInCenter();
+        SpawnEnemy();
+        CreateHealthDisplay();
 
-		CreateRoom();
-		PlacePlayerInCenter();
-		SpawnEnemy();
+        _player.MoveRequested += OnPlayerMoveRequested;
+        _player.HealthChanged += OnPlayerHealthChanged;
+        _player.Died += OnPlayerDied;
 
-		_player.MoveRequested += OnPlayerMoveRequested;
-	}
+        GD.Print($"Player health: {_player.Health}");
+    }
 
-	private Vector2 CellToPosition(int x, int y)
-	{
-		return RoomOrigin + new Vector2(
-			x * TileSize,
-			y * TileSize
-		);
-	}
+    private Vector2 CellToPosition(int x, int y)
+    {
+        return RoomOrigin + new Vector2(x * TileSize, y * TileSize);
+    }
 
-	private void CreateRoom()
-	{
-		// Top and bottom walls
-		for (int x = 0; x < RoomWidth; x++)
-		{
-			CreateWall(x, 0);
-			CreateWall(x, RoomHeight - 1);
-		}
+    private void CreateRoom()
+    {
+        for (int x = 0; x < RoomWidth; x++)
+        {
+            CreateWall(x, 0);
+            CreateWall(x, RoomHeight - 1);
+        }
 
-		// Left and right walls
-		for (int y = 1; y < RoomHeight - 1; y++)
-		{
-			CreateWall(0, y);
-			CreateWall(RoomWidth - 1, y);
-		}
-	}
+        for (int y = 1; y < RoomHeight - 1; y++)
+        {
+            CreateWall(0, y);
+            CreateWall(RoomWidth - 1, y);
+        }
+    }
 
-	private void CreateWall(int x, int y)
-	{
-		Node2D wall = _wallScene.Instantiate<Node2D>();
+    private void CreateWall(int x, int y)
+    {
+        Node2D wall = _wallScene.Instantiate<Node2D>();
+        wall.Position = CellToPosition(x, y);
+        wall.AddToGroup("walls");
+        AddChild(wall);
+    }
 
-		wall.Position = CellToPosition(x, y);
-		wall.AddToGroup("walls");
+    private void PlacePlayerInCenter()
+    {
+        int centerX = RoomWidth / 2;
+        int centerY = RoomHeight / 2;
+        _player.Position = CellToPosition(centerX, centerY);
+    }
 
-		AddChild(wall);
-	}
+    private void SpawnEnemy()
+    {
+        int playerX = RoomWidth / 2;
+        int playerY = RoomHeight / 2;
 
-	private void PlacePlayerInCenter()
-	{
-		int centerX = RoomWidth / 2;
-		int centerY = RoomHeight / 2;
+        int enemyX;
+        int enemyY;
 
-		_player.Position = CellToPosition(centerX, centerY);
-	}
+        do
+        {
+            enemyX = _random.RandiRange(1, RoomWidth - 2);
+            enemyY = _random.RandiRange(1, RoomHeight - 2);
+        }
+        while (enemyX == playerX && enemyY == playerY);
 
-	private void SpawnEnemy()
-	{
-		int playerX = RoomWidth / 2;
-		int playerY = RoomHeight / 2;
+        _enemy = _enemyScene.Instantiate<Enemy>();
+        _enemy.Name = "Enemy";
+        _enemy.Position = CellToPosition(enemyX, enemyY);
+        AddChild(_enemy);
+    }
 
-		int enemyX;
-		int enemyY;
+    private void CreateHealthDisplay()
+    {
+        CanvasLayer canvasLayer = new();
+        AddChild(canvasLayer);
 
-		do
-		{
-			enemyX = _random.RandiRange(1, RoomWidth - 2);
-			enemyY = _random.RandiRange(1, RoomHeight - 2);
-		}
-		while (enemyX == playerX && enemyY == playerY);
+        _healthLabel = new Label
+        {
+            Position = new Vector2(16, 16),
+            Text = $"HP: {_player.Health}"
+        };
 
-		_enemy = _enemyScene.Instantiate<Enemy>();
-		_enemy.Name = "Enemy";
-		_enemy.Position = CellToPosition(enemyX, enemyY);
+        _healthLabel.AddThemeFontSizeOverride("font_size", 24);
+        _healthLabel.AddThemeColorOverride("font_color", Colors.White);
+        canvasLayer.AddChild(_healthLabel);
+    }
 
-		AddChild(_enemy);
-	}
+    private bool IsWallAt(Vector2 position)
+    {
+        foreach (Node node in GetTree().GetNodesInGroup("walls"))
+        {
+            if (node is Node2D wall &&
+                wall.Position.IsEqualApprox(position))
+            {
+                return true;
+            }
+        }
 
-	private bool IsWallAt(Vector2 position)
-	{
-		foreach (Node node in GetTree().GetNodesInGroup("walls"))
-		{
-			if (node is Node2D wall &&
-				wall.Position.IsEqualApprox(position))
-			{
-				return true;
-			}
-		}
+        return false;
+    }
 
-		return false;
-	}
+    private void OnPlayerMoveRequested(Vector2 direction)
+    {
+        Vector2 targetPosition =
+            _player.Position + direction * TileSize;
 
-	private void OnPlayerMoveRequested(Vector2 direction)
-	{
-		Vector2 targetPosition =
-			_player.Position + direction * TileSize;
+        bool enemyExists =
+            IsInstanceValid(_enemy) &&
+            !_enemy.IsQueuedForDeletion();
 
-		bool enemyExists =
-			IsInstanceValid(_enemy) &&
-			!_enemy.IsQueuedForDeletion();
+        bool playerAttacked = false;
+        bool turnTaken = false;
 
-		bool playerAttacked = false;
-		bool turnTaken = false;
+        if (enemyExists &&
+            targetPosition.IsEqualApprox(_enemy.Position))
+        {
+            _enemy.TakeDamage(1);
+            playerAttacked = true;
+            turnTaken = true;
+        }
+        else if (!IsWallAt(targetPosition))
+        {
+            _player.Move(direction);
+            turnTaken = true;
+        }
+        else
+        {
+            GD.Print($"Player hit wall at {targetPosition}");
+        }
 
-		if (enemyExists &&
-			targetPosition.IsEqualApprox(_enemy.Position))
-		{
-			_enemy.TakeDamage(1);
-			playerAttacked = true;
-			turnTaken = true;
-		}
-		else if (!IsWallAt(targetPosition))
-		{
-			_player.Move(direction);
-			turnTaken = true;
-		}
-		else
-		{
-			GD.Print($"Player hit wall at {targetPosition}");
-		}
+        if (turnTaken &&
+            !playerAttacked &&
+            _player.Health > 0 &&
+            IsInstanceValid(_enemy) &&
+            !_enemy.IsQueuedForDeletion())
+        {
+            _enemy.TakeTurn(_player);
+        }
+    }
 
-		if (turnTaken &&
-			!playerAttacked &&
-			IsInstanceValid(_enemy) &&
-			!_enemy.IsQueuedForDeletion())
-		{
-			_enemy.TakeTurn(_player.Position);
-		}
-	}
+    private void OnPlayerHealthChanged(int health)
+    {
+        _healthLabel.Text = $"HP: {health}";
+    }
+
+    private void OnPlayerDied()
+    {
+        _healthLabel.Text = "HP: 0 - GAME OVER";
+    }
 }
