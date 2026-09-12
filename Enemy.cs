@@ -19,8 +19,7 @@ public partial class Enemy : CharacterBody2D
 
 	public void TakeTurn(Player player)
 	{
-		Vector2 playerPosition = player.Position;
-		Vector2 difference = playerPosition - Position;
+		Vector2 difference = player.Position - Position;
 
 		if (difference.IsZeroApprox())
 			return;
@@ -34,12 +33,28 @@ public partial class Enemy : CharacterBody2D
 
 		Vector2 nextPosition = Position + direction * TileSize;
 
-		if (nextPosition.IsEqualApprox(playerPosition))
+		if (nextPosition.IsEqualApprox(player.Position))
 		{
 			GD.Print("Enemy attacks player!");
+			player.TakeDamage(1);
 			return;
 		}
 
-		Position = nextPosition;
+		if (!IsWallAt(nextPosition))
+			Position = nextPosition;
+	}
+
+	private bool IsWallAt(Vector2 position)
+	{
+		foreach (Node node in GetTree().GetNodesInGroup("walls"))
+		{
+			if (node is Node2D wall &&
+				wall.Position.IsEqualApprox(position))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 }

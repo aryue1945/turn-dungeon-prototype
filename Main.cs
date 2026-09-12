@@ -12,6 +12,7 @@ public partial class Main : Node2D
 
 	private Player _player;
 	private Enemy _enemy;
+	private Label _healthLabel;
 
 	private PackedScene _enemyScene;
 	private PackedScene _wallScene;
@@ -20,39 +21,36 @@ public partial class Main : Node2D
 	{
 		_player = GetNode<Player>("Player");
 
-		_enemyScene =
-			GD.Load<PackedScene>("res://Enemy.tscn");
-
-		_wallScene =
-			GD.Load<PackedScene>("res://Wall.tscn");
+		_enemyScene = GD.Load<PackedScene>("res://enemy.tscn");
+		_wallScene = GD.Load<PackedScene>("res://wall.tscn");
 
 		_random.Randomize();
 
 		CreateRoom();
 		PlacePlayerInCenter();
 		SpawnEnemy();
+		CreateHealthDisplay();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
+		_player.HealthChanged += OnPlayerHealthChanged;
+		_player.Died += OnPlayerDied;
+
+		GD.Print($"Player health: {_player.Health}");
 	}
 
 	private Vector2 CellToPosition(int x, int y)
 	{
-		return RoomOrigin + new Vector2(
-			x * TileSize,
-			y * TileSize
-		);
+		return RoomOrigin + new Vector2(x * TileSize, y * TileSize);
 	}
 
 	private void CreateRoom()
 	{
-		// Top and bottom walls
 		for (int x = 0; x < RoomWidth; x++)
 		{
 			CreateWall(x, 0);
 			CreateWall(x, RoomHeight - 1);
 		}
 
-		// Left and right walls
 		for (int y = 1; y < RoomHeight - 1; y++)
 		{
 			CreateWall(0, y);
@@ -63,10 +61,8 @@ public partial class Main : Node2D
 	private void CreateWall(int x, int y)
 	{
 		Node2D wall = _wallScene.Instantiate<Node2D>();
-
 		wall.Position = CellToPosition(x, y);
 		wall.AddToGroup("walls");
-
 		AddChild(wall);
 	}
 
@@ -74,7 +70,6 @@ public partial class Main : Node2D
 	{
 		int centerX = RoomWidth / 2;
 		int centerY = RoomHeight / 2;
-
 		_player.Position = CellToPosition(centerX, centerY);
 	}
 
@@ -96,8 +91,23 @@ public partial class Main : Node2D
 		_enemy = _enemyScene.Instantiate<Enemy>();
 		_enemy.Name = "Enemy";
 		_enemy.Position = CellToPosition(enemyX, enemyY);
-
 		AddChild(_enemy);
+	}
+
+	private void CreateHealthDisplay()
+	{
+		CanvasLayer canvasLayer = new();
+		AddChild(canvasLayer);
+
+		_healthLabel = new Label
+		{
+			Position = new Vector2(16, 16),
+			Text = $"HP: {_player.Health}"
+		};
+
+		_healthLabel.AddThemeFontSizeOverride("font_size", 24);
+		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
+		canvasLayer.AddChild(_healthLabel);
 	}
 
 	private bool IsWallAt(Vector2 position)
@@ -141,14 +151,26 @@ public partial class Main : Node2D
 		else
 		{
 			GD.Print($"Player hit wall at {targetPosition}");
+			turnTaken = true;
 		}
 
 		if (turnTaken &&
 			!playerAttacked &&
+			_player.Health > 0 &&
 			IsInstanceValid(_enemy) &&
 			!_enemy.IsQueuedForDeletion())
 		{
-			_enemy.TakeTurn(_player.Position);
+			_enemy.TakeTurn(_player);
 		}
+	}
+
+	private void OnPlayerHealthChanged(int health)
+	{
+		_healthLabel.Text = $"HP: {health}";
+	}
+
+	private void OnPlayerDied()
+	{
+		_healthLabel.Text = "HP: 0 - GAME OVER";
 	}
 }
