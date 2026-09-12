@@ -151,6 +151,7 @@ public partial class Main : Node2D
         else
         {
             GD.Print($"Player hit wall at {targetPosition}");
+            turnTaken = true;
         }
 
         if (turnTaken &&
