@@ -1,17 +1,19 @@
 using Godot;
+using System.Collections.Generic;
 
 public partial class Main : Node2D
 {
 	private const float TileSize = 32.0f;
 	private const int RoomWidth = 15;
 	private const int RoomHeight = 11;
+	private const int EnemyCount = 3;
 
 	private static readonly Vector2 RoomOrigin = new(64, 64);
 
 	private readonly RandomNumberGenerator _random = new();
+	private readonly List<Enemy> _enemies = new();
 
 	private Player _player;
-	private Enemy _enemy;
 	private Label _healthLabel;
 
 	private PackedScene _enemyScene;
@@ -28,7 +30,7 @@ public partial class Main : Node2D
 
 		CreateRoom();
 		PlacePlayerInCenter();
-		SpawnEnemy();
+		SpawnEnemies();
 		CreateHealthDisplay();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
@@ -36,6 +38,7 @@ public partial class Main : Node2D
 		_player.Died += OnPlayerDied;
 
 		GD.Print($"Player health: {_player.Health}");
+		GD.Print($"Spawned {_enemies.Count} enemies.");
 	}
 
 	private Vector2 CellToPosition(int x, int y)
@@ -73,25 +76,33 @@ public partial class Main : Node2D
 		_player.Position = CellToPosition(centerX, centerY);
 	}
 
-	private void SpawnEnemy()
+	private void SpawnEnemies()
 	{
-		int playerX = RoomWidth / 2;
-		int playerY = RoomHeight / 2;
-
-		int enemyX;
-		int enemyY;
-
-		do
+		HashSet<Vector2> occupiedPositions = new()
 		{
-			enemyX = _random.RandiRange(1, RoomWidth - 2);
-			enemyY = _random.RandiRange(1, RoomHeight - 2);
-		}
-		while (enemyX == playerX && enemyY == playerY);
+			_player.Position
+		};
 
-		_enemy = _enemyScene.Instantiate<Enemy>();
-		_enemy.Name = "Enemy";
-		_enemy.Position = CellToPosition(enemyX, enemyY);
-		AddChild(_enemy);
+		for (int i = 0; i < EnemyCount; i++)
+		{
+			Vector2 enemyPosition;
+
+			do
+			{
+				int enemyX = _random.RandiRange(1, RoomWidth - 2);
+				int enemyY = _random.RandiRange(1, RoomHeight - 2);
+				enemyPosition = CellToPosition(enemyX, enemyY);
+			}
+			while (occupiedPositions.Contains(enemyPosition));
+
+			Enemy enemy = _enemyScene.Instantiate<Enemy>();
+			enemy.Name = $"Enemy{i + 1}";
+			enemy.Position = enemyPosition;
+
+			occupiedPositions.Add(enemyPosition);
+			_enemies.Add(enemy);
+			AddChild(enemy);
+		}
 	}
 
 	private void CreateHealthDisplay()
@@ -124,44 +135,91 @@ public partial class Main : Node2D
 		return false;
 	}
 
+	private Enemy FindEnemyAt(Vector2 position)
+	{
+		foreach (Enemy enemy in _enemies)
+		{
+			if (IsEnemyActive(enemy) &&
+				enemy.Position.IsEqualApprox(position))
+			{
+				return enemy;
+			}
+		}
+
+		return null;
+	}
+
+	private bool IsEnemyActive(Enemy enemy)
+	{
+		return IsInstanceValid(enemy) &&
+			!enemy.IsQueuedForDeletion();
+	}
+
+	private void RemoveDefeatedEnemies()
+	{
+		for (int i = _enemies.Count - 1; i >= 0; i--)
+		{
+			if (!IsEnemyActive(_enemies[i]))
+				_enemies.RemoveAt(i);
+		}
+	}
+
+	private HashSet<Vector2> GetOccupiedEnemyPositions(Enemy movingEnemy)
+	{
+		HashSet<Vector2> occupiedPositions = new();
+
+		foreach (Enemy enemy in _enemies)
+		{
+			if (enemy != movingEnemy && IsEnemyActive(enemy))
+				occupiedPositions.Add(enemy.Position);
+		}
+
+		return occupiedPositions;
+	}
+
+	private void TakeEnemyTurns(Enemy attackedEnemy)
+	{
+		foreach (Enemy enemy in _enemies)
+		{
+			if (!IsEnemyActive(enemy) || enemy == attackedEnemy)
+				continue;
+
+			HashSet<Vector2> occupiedPositions =
+				GetOccupiedEnemyPositions(enemy);
+
+			enemy.TakeTurn(_player, occupiedPositions);
+
+			if (_player.Health <= 0)
+				break;
+		}
+	}
+
 	private void OnPlayerMoveRequested(Vector2 direction)
 	{
 		Vector2 targetPosition =
 			_player.Position + direction * TileSize;
 
-		bool enemyExists =
-			IsInstanceValid(_enemy) &&
-			!_enemy.IsQueuedForDeletion();
+		Enemy attackedEnemy = FindEnemyAt(targetPosition);
 
-		bool playerAttacked = false;
-		bool turnTaken = false;
-
-		if (enemyExists &&
-			targetPosition.IsEqualApprox(_enemy.Position))
+		if (attackedEnemy != null)
 		{
-			_enemy.TakeDamage(1);
-			playerAttacked = true;
-			turnTaken = true;
+			attackedEnemy.TakeDamage(1);
 		}
 		else if (!IsWallAt(targetPosition))
 		{
 			_player.Move(direction);
-			turnTaken = true;
 		}
 		else
 		{
 			GD.Print($"Player hit wall at {targetPosition}");
-			turnTaken = true;
 		}
 
-		if (turnTaken &&
-			!playerAttacked &&
-			_player.Health > 0 &&
-			IsInstanceValid(_enemy) &&
-			!_enemy.IsQueuedForDeletion())
-		{
-			_enemy.TakeTurn(_player);
-		}
+		RemoveDefeatedEnemies();
+
+		if (_player.Health > 0)
+			TakeEnemyTurns(attackedEnemy);
+
+		RemoveDefeatedEnemies();
 	}
 
 	private void OnPlayerHealthChanged(int health)

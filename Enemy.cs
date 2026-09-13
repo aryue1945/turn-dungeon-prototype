@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 
 public partial class Enemy : CharacterBody2D
 {
@@ -8,16 +9,18 @@ public partial class Enemy : CharacterBody2D
 	public void TakeDamage(int damage)
 	{
 		_health -= damage;
-		GD.Print($"Enemy health: {_health}");
+		GD.Print($"{Name} health: {_health}");
 
 		if (_health <= 0)
 		{
-			GD.Print("Enemy defeated!");
+			GD.Print($"{Name} defeated!");
 			QueueFree();
 		}
 	}
 
-	public void TakeTurn(Player player)
+	public void TakeTurn(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions)
 	{
 		Vector2 difference = player.Position - Position;
 
@@ -35,13 +38,18 @@ public partial class Enemy : CharacterBody2D
 
 		if (nextPosition.IsEqualApprox(player.Position))
 		{
-			GD.Print("Enemy attacks player!");
+			GD.Print($"{Name} attacks player!");
 			player.TakeDamage(1);
 			return;
 		}
 
-		if (!IsWallAt(nextPosition))
-			Position = nextPosition;
+		if (IsWallAt(nextPosition) ||
+			occupiedEnemyPositions.Contains(nextPosition))
+		{
+			return;
+		}
+
+		Position = nextPosition;
 	}
 
 	private bool IsWallAt(Vector2 position)
