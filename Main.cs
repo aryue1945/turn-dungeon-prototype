@@ -179,6 +179,28 @@ public partial class Main : Node2D
 		return null;
 	}
 
+	private Enemy FindEnemyInAttackRange(Vector2 direction)
+	{
+		for (int distance = 1;
+			distance <= _player.AttackRange;
+			distance++)
+		{
+			Vector2 position =
+				_player.Position +
+				direction * TileSize * distance;
+
+			if (IsWallAt(position))
+				return null;
+
+			Enemy enemy = FindEnemyAt(position);
+
+			if (enemy != null)
+				return enemy;
+		}
+
+		return null;
+	}
+
 	private bool IsEnemyActive(Enemy enemy)
 	{
 		return IsInstanceValid(enemy) &&
@@ -207,11 +229,11 @@ public partial class Main : Node2D
 		return occupiedPositions;
 	}
 
-	private void TakeEnemyTurns(Enemy attackedEnemy)
+	private void TakeEnemyTurns()
 	{
 		foreach (Enemy enemy in _enemies)
 		{
-			if (!IsEnemyActive(enemy) || enemy == attackedEnemy)
+			if (!IsEnemyActive(enemy))
 				continue;
 
 			HashSet<Vector2> occupiedPositions =
@@ -235,7 +257,7 @@ public partial class Main : Node2D
 		Vector2 targetPosition =
 			_player.Position + direction * TileSize;
 
-		Enemy attackedEnemy = FindEnemyAt(targetPosition);
+		Enemy attackedEnemy = FindEnemyInAttackRange(direction);
 
 		if (attackedEnemy != null)
 		{
@@ -256,7 +278,7 @@ public partial class Main : Node2D
 		if (_gameEnded)
 			return;
 
-		TakeEnemyTurns(attackedEnemy);
+		TakeEnemyTurns();
 
 		RemoveDefeatedEnemies();
 		CheckForVictory();
