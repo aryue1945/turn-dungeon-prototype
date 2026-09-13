@@ -16,7 +16,7 @@ public partial class Enemy : CharacterBody2D
 	private int _health = 2;
 	private Polygon2D _facingIndicator;
 	private Vector2 _facingDirection = Vector2.Down;
-	private bool _slowChaserMovesThisTurn;
+	private bool _slowChaserHasPreparedMove;
 
 	public EnemyMovementType MovementType { get; private set; }
 
@@ -40,7 +40,8 @@ public partial class Enemy : CharacterBody2D
 			},
 			Color = Colors.Yellow,
 			ZIndex = 1,
-			Visible = MovementType != EnemyMovementType.Stationary
+			Visible = MovementType != EnemyMovementType.Stationary &&
+				MovementType != EnemyMovementType.SlowChaser
 		};
 
 		AddChild(_facingIndicator);
@@ -79,6 +80,9 @@ public partial class Enemy : CharacterBody2D
 			_facingDirection = new Vector2(0, Mathf.Sign(difference.Y));
 
 		SetFacingDirection(_facingDirection);
+
+		if (MovementType == EnemyMovementType.SlowChaser)
+			_facingIndicator.Visible = true;
 	}
 
 	public void TakeTurn(
@@ -109,11 +113,18 @@ public partial class Enemy : CharacterBody2D
 		Player player,
 		HashSet<Vector2> occupiedEnemyPositions)
 	{
-		if (_slowChaserMovesThisTurn)
-			TryMoveForward(player, occupiedEnemyPositions);
+		if (!_slowChaserHasPreparedMove)
+		{
+			// Preparing is the entire action for this turn.
+			PrepareNextMove(player.Position);
+			_slowChaserHasPreparedMove = true;
+			return;
+		}
 
-		_slowChaserMovesThisTurn = !_slowChaserMovesThisTurn;
-		PrepareNextMove(player.Position);
+		// Moving uses the direction locked during the previous turn.
+		TryMoveForward(player, occupiedEnemyPositions);
+		_slowChaserHasPreparedMove = false;
+		_facingIndicator.Visible = false;
 	}
 
 	private void TakePatrollerTurn(
