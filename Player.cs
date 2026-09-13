@@ -15,6 +15,7 @@ public partial class Player : CharacterBody2D
 	public delegate void DiedEventHandler();
 
 	public int Health { get; private set; } = 3;
+	public int AttackRange { get; private set; } = 1;
 
 	public override void _Ready()
 	{
@@ -58,6 +59,11 @@ public partial class Player : CharacterBody2D
 	public void Move(Vector2 direction)
 	{
 		Position += direction * TileSize;
+	}
+
+	public void SetAttackRange(int attackRange)
+	{
+		AttackRange = attackRange < 1 ? 1 : attackRange;
 	}
 
 	private void SetFacingDirection(Vector2 direction)

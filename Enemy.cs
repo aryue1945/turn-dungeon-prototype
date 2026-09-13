@@ -1,12 +1,53 @@
 using Godot;
 using System.Collections.Generic;
 
+public enum EnemyMovementType
+{
+	SlowChaser,
+	Patroller,
+	LeftTurner,
+	RightTurner,
+	Stationary
+}
+
 public partial class Enemy : CharacterBody2D
 {
+	private enum ForwardActionResult
+	{
+		Moved,
+		Attacked,
+		Blocked
+	}
+
 	private const float TileSize = 32.0f;
-	private int _health = 2;
+	private const int MaxHealth = 2;
+
+	private int _health = MaxHealth;
 	private Polygon2D _facingIndicator;
+	private ProgressBar _healthBar;
 	private Vector2 _facingDirection = Vector2.Down;
+	private bool _slowChaserHasPreparedMove;
+
+	public EnemyMovementType MovementType { get; private set; }
+	public int AttackRange { get; private set; } = 1;
+
+	public void Configure(EnemyMovementType movementType)
+	{
+		MovementType = movementType;
+
+		AttackRange = movementType switch
+		{
+			EnemyMovementType.SlowChaser => 1,
+			EnemyMovementType.Patroller => 1,
+			EnemyMovementType.LeftTurner => 1,
+			EnemyMovementType.RightTurner => 1,
+			EnemyMovementType.Stationary => 1,
+			_ => 1
+		};
+
+		if (MovementType == EnemyMovementType.Patroller)
+			_facingDirection = Vector2.Right;
+	}
 
 	public override void _Ready()
 	{
@@ -19,17 +60,26 @@ public partial class Enemy : CharacterBody2D
 				new(7, 5)
 			},
 			Color = Colors.Yellow,
-			ZIndex = 1
+			ZIndex = 1,
+			Visible = MovementType != EnemyMovementType.Stationary &&
+				MovementType != EnemyMovementType.SlowChaser
 		};
 
 		AddChild(_facingIndicator);
-		SetFacingDirection(Vector2.Down);
+		SetFacingDirection(_facingDirection);
+		ApplyTypeDisplay();
+		CreateHealthBar();
 	}
 
 	public void TakeDamage(int damage)
 	{
 		_health -= damage;
-		GD.Print($"{Name} health: {_health}");
+
+		if (_health < 0)
+			_health = 0;
+
+		_healthBar.Value = _health;
+		GD.Print($"{Name} health: {_health}/{MaxHealth}");
 
 		if (_health <= 0)
 		{
@@ -40,6 +90,9 @@ public partial class Enemy : CharacterBody2D
 
 	public void PrepareNextMove(Vector2 playerPosition)
 	{
+		if (MovementType != EnemyMovementType.SlowChaser)
+			return;
+
 		Vector2 difference = playerPosition - Position;
 
 		if (difference.IsZeroApprox())
@@ -51,29 +104,241 @@ public partial class Enemy : CharacterBody2D
 			_facingDirection = new Vector2(0, Mathf.Sign(difference.Y));
 
 		SetFacingDirection(_facingDirection);
+
+		_facingIndicator.Visible = true;
 	}
 
 	public void TakeTurn(
 		Player player,
 		HashSet<Vector2> occupiedEnemyPositions)
 	{
+		switch (MovementType)
+		{
+			case EnemyMovementType.SlowChaser:
+				TakeSlowChaserTurn(player, occupiedEnemyPositions);
+				break;
+
+			case EnemyMovementType.Patroller:
+				TakePatrollerTurn(player, occupiedEnemyPositions);
+				break;
+
+			case EnemyMovementType.LeftTurner:
+				TakeTurningWalkerTurn(
+					player,
+					occupiedEnemyPositions,
+					turnRight: false
+				);
+				break;
+
+			case EnemyMovementType.RightTurner:
+				TakeTurningWalkerTurn(
+					player,
+					occupiedEnemyPositions,
+					turnRight: true
+				);
+				break;
+
+			case EnemyMovementType.Stationary:
+				break;
+		}
+	}
+
+	private void TakeSlowChaserTurn(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions)
+	{
+		if (!_slowChaserHasPreparedMove)
+		{
+			// Preparing is the entire action for this turn.
+			PrepareNextMove(player.Position);
+			_slowChaserHasPreparedMove = true;
+			return;
+		}
+
+		// Moving uses the direction locked during the previous turn.
+		TryMoveForward(player, occupiedEnemyPositions);
+		_slowChaserHasPreparedMove = false;
+		_facingIndicator.Visible = false;
+	}
+
+	private void TakePatrollerTurn(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions)
+	{
+		ForwardActionResult result =
+			TryMoveForward(player, occupiedEnemyPositions);
+
+		if (result == ForwardActionResult.Blocked)
+			TurnRight();
+	}
+
+	private void TakeTurningWalkerTurn(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions,
+		bool turnRight)
+	{
+		ForwardActionResult result =
+			TryMoveForward(player, occupiedEnemyPositions);
+
+		// An attack consumes the entire beat.
+		if (result == ForwardActionResult.Attacked)
+			return;
+
+		// Otherwise turning is the second action, even if movement was blocked.
+		if (turnRight)
+			TurnRight();
+		else
+			TurnLeft();
+	}
+
+	private void TurnLeft()
+	{
+		_facingDirection = new Vector2(
+			_facingDirection.Y,
+			-_facingDirection.X
+		);
+		SetFacingDirection(_facingDirection);
+	}
+
+	private void TurnRight()
+	{
+		_facingDirection = new Vector2(
+			-_facingDirection.Y,
+			_facingDirection.X
+		);
+		SetFacingDirection(_facingDirection);
+	}
+
+	private bool CanAttackForward(
+		Vector2 targetPosition,
+		HashSet<Vector2> occupiedEnemyPositions)
+	{
+		for (int distance = 1; distance <= AttackRange; distance++)
+		{
+			Vector2 position =
+				Position +
+				_facingDirection * TileSize * distance;
+
+			if (IsWallAt(position) ||
+				occupiedEnemyPositions.Contains(position))
+			{
+				return false;
+			}
+
+			if (position.IsEqualApprox(targetPosition))
+				return true;
+		}
+
+		return false;
+	}
+
+	private void Attack(Player player)
+	{
+		GD.Print(
+			$"{Name} attacks forward from range {AttackRange}!"
+		);
+		player.TakeDamage(1);
+	}
+
+	private ForwardActionResult TryMoveForward(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions)
+	{
+		if (CanAttackForward(
+			player.Position,
+			occupiedEnemyPositions
+		))
+		{
+			Attack(player);
+			return ForwardActionResult.Attacked;
+		}
+
 		Vector2 nextPosition =
 			Position + _facingDirection * TileSize;
 
-		if (nextPosition.IsEqualApprox(player.Position))
+		if (IsWallAt(nextPosition) ||
+			occupiedEnemyPositions.Contains(nextPosition))
 		{
-			GD.Print($"{Name} attacks player!");
-			player.TakeDamage(1);
-		}
-		else if (!IsWallAt(nextPosition) &&
-			!occupiedEnemyPositions.Contains(nextPosition))
-		{
-			Position = nextPosition;
+			return ForwardActionResult.Blocked;
 		}
 
-		// The completed move used the old facing direction.
-		// Now telegraph the direction prepared for the next turn.
-		PrepareNextMove(player.Position);
+		Position = nextPosition;
+		return ForwardActionResult.Moved;
+	}
+
+	private void ApplyTypeDisplay()
+	{
+		Sprite2D sprite = GetNode<Sprite2D>("Sprite2D");
+		string typeLabel;
+
+		switch (MovementType)
+		{
+			case EnemyMovementType.SlowChaser:
+				sprite.Modulate = new Color(0.2f, 0.55f, 1.0f);
+				typeLabel = "SLOW";
+				break;
+
+			case EnemyMovementType.Patroller:
+				sprite.Modulate = new Color(1.0f, 0.55f, 0.1f);
+				typeLabel = "PATROL";
+				break;
+
+			case EnemyMovementType.LeftTurner:
+				sprite.Modulate = new Color(0.2f, 0.85f, 0.35f);
+				typeLabel = "LEFT";
+				break;
+
+			case EnemyMovementType.RightTurner:
+				sprite.Modulate = new Color(1.0f, 0.3f, 0.65f);
+				typeLabel = "RIGHT";
+				break;
+
+			default:
+				sprite.Modulate = new Color(0.65f, 0.35f, 0.9f);
+				typeLabel = "STILL";
+				break;
+		}
+
+		Label label = new()
+		{
+			Position = new Vector2(-28, 17),
+			Size = new Vector2(56, 18),
+			Text = typeLabel,
+			HorizontalAlignment = Godot.HorizontalAlignment.Center,
+			ZIndex = 2
+		};
+		label.AddThemeFontSizeOverride("font_size", 10);
+		label.AddThemeColorOverride("font_color", Colors.White);
+		AddChild(label);
+	}
+
+	private void CreateHealthBar()
+	{
+		_healthBar = new ProgressBar
+		{
+			Position = new Vector2(-16, -26),
+			Size = new Vector2(32, 7),
+			MinValue = 0,
+			MaxValue = MaxHealth,
+			Value = _health,
+			ShowPercentage = false,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+			ZIndex = 3
+		};
+
+		StyleBoxFlat backgroundStyle = new()
+		{
+			BgColor = new Color(0.12f, 0.12f, 0.12f)
+		};
+
+		StyleBoxFlat fillStyle = new()
+		{
+			BgColor = new Color(0.2f, 0.9f, 0.25f)
+		};
+
+		_healthBar.AddThemeStyleboxOverride("background", backgroundStyle);
+		_healthBar.AddThemeStyleboxOverride("fill", fillStyle);
+		AddChild(_healthBar);
 	}
 
 	private void SetFacingDirection(Vector2 direction)
