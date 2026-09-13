@@ -256,8 +256,12 @@ public partial class Main : Node2D
 		}
 		else
 		{
+			string actionText = attackResult == AttackTurnResult.Preparing
+				? "prepares"
+				: "used";
+
 			GD.Print(
-				$"Player used {_player.Attack.Definition.Name}."
+				$"Player {actionText} {_player.Attack.Definition.Name}."
 			);
 		}
 
