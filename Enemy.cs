@@ -33,7 +33,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		_health > 0 && !IsQueuedForDeletion();
 	public CombatFaction Faction => CombatFaction.Enemy;
 	public AttackState Attack { get; } = new(
-		AttackDefinitions.BasicStrike
+		AttackDefinitions.BasicEnemyStrike
 	);
 
 	public void Configure(EnemyMovementType movementType)
