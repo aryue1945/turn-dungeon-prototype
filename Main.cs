@@ -6,9 +6,15 @@ public partial class Main : Node2D
 	private const float TileSize = 32.0f;
 	private const int RoomWidth = 15;
 	private const int RoomHeight = 11;
-	private const int EnemyCount = 3;
 
 	private static readonly Vector2 RoomOrigin = new(64, 64);
+	private static readonly EnemyMovementType[] EnemyTypes =
+	{
+		EnemyMovementType.Chaser,
+		EnemyMovementType.SlowChaser,
+		EnemyMovementType.Patroller,
+		EnemyMovementType.Stationary
+	};
 
 	private readonly RandomNumberGenerator _random = new();
 	private readonly List<Enemy> _enemies = new();
@@ -86,7 +92,7 @@ public partial class Main : Node2D
 			_player.Position
 		};
 
-		for (int i = 0; i < EnemyCount; i++)
+		for (int i = 0; i < EnemyTypes.Length; i++)
 		{
 			Vector2 enemyPosition;
 
@@ -98,9 +104,11 @@ public partial class Main : Node2D
 			}
 			while (occupiedPositions.Contains(enemyPosition));
 
+			EnemyMovementType movementType = EnemyTypes[i];
 			Enemy enemy = _enemyScene.Instantiate<Enemy>();
-			enemy.Name = $"Enemy{i + 1}";
+			enemy.Name = $"{movementType}{i + 1}";
 			enemy.Position = enemyPosition;
+			enemy.Configure(movementType);
 
 			occupiedPositions.Add(enemyPosition);
 			_enemies.Add(enemy);
