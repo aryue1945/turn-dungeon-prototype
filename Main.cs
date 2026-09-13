@@ -113,7 +113,9 @@ public partial class Main : Node2D
 			occupiedPositions.Add(enemyPosition);
 			_enemies.Add(enemy);
 			AddChild(enemy);
-			enemy.PrepareNextMove(_player.Position);
+
+			if (movementType == EnemyMovementType.Chaser)
+				enemy.PrepareNextMove(_player.Position);
 		}
 	}
 
