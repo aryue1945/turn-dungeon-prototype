@@ -49,6 +49,7 @@ public sealed class AttackDefinition
 	public AttackOffset[] AttackOffsets { get; }
 	public AttackTargetRule TargetRule { get; }
 	public bool StopsAtWalls { get; }
+	public int MaxTargets { get; }
 
 	public AttackDefinition(
 		string name,
@@ -57,7 +58,8 @@ public sealed class AttackDefinition
 		AttackOffset[] detectionOffsets,
 		AttackOffset[] attackOffsets,
 		AttackTargetRule targetRule,
-		bool stopsAtWalls)
+		bool stopsAtWalls,
+		int maxTargets)
 	{
 		Name = name;
 		Damage = damage;
@@ -66,6 +68,7 @@ public sealed class AttackDefinition
 		AttackOffsets = attackOffsets;
 		TargetRule = targetRule;
 		StopsAtWalls = stopsAtWalls;
+		MaxTargets = maxTargets;
 	}
 }
 
@@ -133,6 +136,7 @@ public static class AttackDefinitions
 		detectionOffsets: OneCellForward,
 		attackOffsets: OneCellForward,
 		targetRule: AttackTargetRule.OpponentsOnly,
-		stopsAtWalls: true
+		stopsAtWalls: true,
+		maxTargets: 1
 	);
 }

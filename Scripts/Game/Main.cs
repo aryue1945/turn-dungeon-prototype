@@ -176,7 +176,7 @@ public partial class Main : Node2D
 		_weaponSelectionPanel = new Panel
 		{
 			Position = new Vector2(160, 112),
-			Size = new Vector2(256, 160)
+			Size = new Vector2(256, 220)
 		};
 		selectionLayer.AddChild(_weaponSelectionPanel);
 
@@ -198,6 +198,15 @@ public partial class Main : Node2D
 		};
 		basicSwordButton.Pressed += OnBasicSwordSelected;
 		_weaponSelectionPanel.AddChild(basicSwordButton);
+
+		Button longSwordButton = new()
+		{
+			Position = new Vector2(48, 136),
+			Size = new Vector2(160, 48),
+			Text = "Long Sword"
+		};
+		longSwordButton.Pressed += OnLongSwordSelected;
+		_weaponSelectionPanel.AddChild(longSwordButton);
 
 		_player.SetProcessUnhandledInput(false);
 	}
@@ -365,7 +374,17 @@ public partial class Main : Node2D
 
 	private void OnBasicSwordSelected()
 	{
-		_player.EquipWeapon(WeaponDefinitions.BasicSword);
+		SelectWeapon(WeaponDefinitions.BasicSword);
+	}
+
+	private void OnLongSwordSelected()
+	{
+		SelectWeapon(WeaponDefinitions.LongSword);
+	}
+
+	private void SelectWeapon(WeaponDefinition weapon)
+	{
+		_player.EquipWeapon(weapon);
 		_weaponLabel.Text = $"Weapon: {_player.Weapon.Name}";
 		_weaponSelectionPanel.Visible = false;
 		_gameStarted = true;

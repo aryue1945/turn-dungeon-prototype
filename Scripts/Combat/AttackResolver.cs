@@ -82,7 +82,7 @@ public static class AttackResolver
 			);
 
 			if (definition.StopsAtWalls && isWallAt(position))
-				continue;
+				break;
 
 			ICombatant target = FindCombatantAt(
 				position,
@@ -118,7 +118,7 @@ public static class AttackResolver
 			);
 
 			if (definition.StopsAtWalls && isWallAt(position))
-				continue;
+				break;
 
 			ICombatant target = FindCombatantAt(
 				position,
@@ -135,6 +135,9 @@ public static class AttackResolver
 
 			target.TakeDamage(definition.Damage);
 			hitTargets.Add(target);
+
+			if (hitTargets.Count >= definition.MaxTargets)
+				break;
 		}
 	}
 
