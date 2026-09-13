@@ -6,6 +6,5 @@
 bin/
 obj/
 
-# Local IDE settings
+# Local Visual Studio settings
 .vs/
-.vscode/
