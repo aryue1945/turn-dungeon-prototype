@@ -15,6 +15,9 @@ public partial class Main : Node2D
 
 	private Player _player;
 	private Label _healthLabel;
+	private Label _statusLabel;
+	private Button _restartButton;
+	private bool _gameEnded;
 
 	private PackedScene _enemyScene;
 	private PackedScene _wallScene;
@@ -31,7 +34,7 @@ public partial class Main : Node2D
 		CreateRoom();
 		PlacePlayerInCenter();
 		SpawnEnemies();
-		CreateHealthDisplay();
+		CreateGameUi();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
 		_player.HealthChanged += OnPlayerHealthChanged;
@@ -105,7 +108,7 @@ public partial class Main : Node2D
 		}
 	}
 
-	private void CreateHealthDisplay()
+	private void CreateGameUi()
 	{
 		CanvasLayer canvasLayer = new();
 		AddChild(canvasLayer);
@@ -115,10 +118,28 @@ public partial class Main : Node2D
 			Position = new Vector2(16, 16),
 			Text = $"HP: {_player.Health}"
 		};
-
 		_healthLabel.AddThemeFontSizeOverride("font_size", 24);
 		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
 		canvasLayer.AddChild(_healthLabel);
+
+		_statusLabel = new Label
+		{
+			Position = new Vector2(188, 176),
+			Size = new Vector2(200, 40),
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		_statusLabel.AddThemeFontSizeOverride("font_size", 28);
+		canvasLayer.AddChild(_statusLabel);
+
+		_restartButton = new Button
+		{
+			Position = new Vector2(228, 224),
+			Size = new Vector2(120, 40),
+			Text = "Restart",
+			Visible = false
+		};
+		_restartButton.Pressed += OnRestartPressed;
+		canvasLayer.AddChild(_restartButton);
 	}
 
 	private bool IsWallAt(Vector2 position)
@@ -196,6 +217,9 @@ public partial class Main : Node2D
 
 	private void OnPlayerMoveRequested(Vector2 direction)
 	{
+		if (_gameEnded)
+			return;
+
 		Vector2 targetPosition =
 			_player.Position + direction * TileSize;
 
@@ -215,11 +239,39 @@ public partial class Main : Node2D
 		}
 
 		RemoveDefeatedEnemies();
+		CheckForVictory();
 
-		if (_player.Health > 0)
-			TakeEnemyTurns(attackedEnemy);
+		if (_gameEnded)
+			return;
+
+		TakeEnemyTurns(attackedEnemy);
 
 		RemoveDefeatedEnemies();
+		CheckForVictory();
+	}
+
+	private void CheckForVictory()
+	{
+		if (!_gameEnded && _enemies.Count == 0)
+			EndGame(true);
+	}
+
+	private void EndGame(bool playerWon)
+	{
+		if (_gameEnded)
+			return;
+
+		_gameEnded = true;
+		_player.SetProcessUnhandledInput(false);
+
+		_statusLabel.Text = playerWon ? "YOU WIN!" : "GAME OVER";
+		_statusLabel.AddThemeColorOverride(
+			"font_color",
+			playerWon ? Colors.LimeGreen : Colors.IndianRed
+		);
+		_restartButton.Visible = true;
+
+		GD.Print(playerWon ? "Room cleared!" : "Game over!");
 	}
 
 	private void OnPlayerHealthChanged(int health)
@@ -229,6 +281,12 @@ public partial class Main : Node2D
 
 	private void OnPlayerDied()
 	{
-		_healthLabel.Text = "HP: 0 - GAME OVER";
+		_healthLabel.Text = "HP: 0";
+		EndGame(false);
+	}
+
+	private void OnRestartPressed()
+	{
+		GetTree().ReloadCurrentScene();
 	}
 }
