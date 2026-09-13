@@ -165,42 +165,6 @@ public partial class Main : Node2D
 		return false;
 	}
 
-	private Enemy FindEnemyAt(Vector2 position)
-	{
-		foreach (Enemy enemy in _enemies)
-		{
-			if (IsEnemyActive(enemy) &&
-				enemy.Position.IsEqualApprox(position))
-			{
-				return enemy;
-			}
-		}
-
-		return null;
-	}
-
-	private Enemy FindEnemyInAttackRange(Vector2 direction)
-	{
-		for (int distance = 1;
-			distance <= _player.AttackRange;
-			distance++)
-		{
-			Vector2 position =
-				_player.Position +
-				direction * TileSize * distance;
-
-			if (IsWallAt(position))
-				return null;
-
-			Enemy enemy = FindEnemyAt(position);
-
-			if (enemy != null)
-				return enemy;
-		}
-
-		return null;
-	}
-
 	private bool IsEnemyActive(Enemy enemy)
 	{
 		return IsInstanceValid(enemy) &&
@@ -229,6 +193,22 @@ public partial class Main : Node2D
 		return occupiedPositions;
 	}
 
+	private IReadOnlyList<ICombatant> GetCombatants()
+	{
+		List<ICombatant> combatants = new()
+		{
+			_player
+		};
+
+		foreach (Enemy enemy in _enemies)
+		{
+			if (IsEnemyActive(enemy))
+				combatants.Add(enemy);
+		}
+
+		return combatants;
+	}
+
 	private void TakeEnemyTurns()
 	{
 		foreach (Enemy enemy in _enemies)
@@ -241,7 +221,8 @@ public partial class Main : Node2D
 
 			enemy.TakeTurn(
 				_player,
-				occupiedPositions
+				occupiedPositions,
+				GetCombatants()
 			);
 
 			if (_player.Health <= 0)
@@ -257,19 +238,31 @@ public partial class Main : Node2D
 		Vector2 targetPosition =
 			_player.Position + direction * TileSize;
 
-		Enemy attackedEnemy = FindEnemyInAttackRange(direction);
+		AttackTurnResult attackResult =
+			AttackResolver.TryAttack(
+				_player,
+				direction,
+				_player.Attack,
+				GetCombatants(),
+				IsWallAt
+			);
 
-		if (attackedEnemy != null)
+		if (attackResult == AttackTurnResult.NoAttack)
 		{
-			attackedEnemy.TakeDamage(1);
-		}
-		else if (!IsWallAt(targetPosition))
-		{
-			_player.Move(direction);
+			if (!IsWallAt(targetPosition))
+				_player.Move(direction);
+			else
+				GD.Print($"Player hit wall at {targetPosition}");
 		}
 		else
 		{
-			GD.Print($"Player hit wall at {targetPosition}");
+			string actionText = attackResult == AttackTurnResult.Preparing
+				? "prepares"
+				: "used";
+
+			GD.Print(
+				$"Player {actionText} {_player.Attack.Definition.Name}."
+			);
 		}
 
 		RemoveDefeatedEnemies();

@@ -10,12 +10,12 @@ public enum EnemyMovementType
 	Stationary
 }
 
-public partial class Enemy : CharacterBody2D
+public partial class Enemy : CharacterBody2D, ICombatant
 {
 	private enum ForwardActionResult
 	{
 		Moved,
-		Attacked,
+		AttackAction,
 		Blocked
 	}
 
@@ -29,21 +29,16 @@ public partial class Enemy : CharacterBody2D
 	private bool _slowChaserHasPreparedMove;
 
 	public EnemyMovementType MovementType { get; private set; }
-	public int AttackRange { get; private set; } = 1;
+	public bool IsAlive =>
+		_health > 0 && !IsQueuedForDeletion();
+	public CombatFaction Faction => CombatFaction.Enemy;
+	public AttackState Attack { get; } = new(
+		AttackDefinitions.BasicStrike
+	);
 
 	public void Configure(EnemyMovementType movementType)
 	{
 		MovementType = movementType;
-
-		AttackRange = movementType switch
-		{
-			EnemyMovementType.SlowChaser => 1,
-			EnemyMovementType.Patroller => 1,
-			EnemyMovementType.LeftTurner => 1,
-			EnemyMovementType.RightTurner => 1,
-			EnemyMovementType.Stationary => 1,
-			_ => 1
-		};
 
 		if (MovementType == EnemyMovementType.Patroller)
 			_facingDirection = Vector2.Right;
@@ -110,30 +105,38 @@ public partial class Enemy : CharacterBody2D
 
 	public void TakeTurn(
 		Player player,
-		HashSet<Vector2> occupiedEnemyPositions)
+		HashSet<Vector2> occupiedEnemyPositions,
+		IReadOnlyList<ICombatant> combatants)
 	{
 		switch (MovementType)
 		{
 			case EnemyMovementType.SlowChaser:
-				TakeSlowChaserTurn(player, occupiedEnemyPositions);
+				TakeSlowChaserTurn(
+					player,
+					occupiedEnemyPositions,
+					combatants
+				);
 				break;
 
 			case EnemyMovementType.Patroller:
-				TakePatrollerTurn(player, occupiedEnemyPositions);
+				TakePatrollerTurn(
+					occupiedEnemyPositions,
+					combatants
+				);
 				break;
 
 			case EnemyMovementType.LeftTurner:
 				TakeTurningWalkerTurn(
-					player,
 					occupiedEnemyPositions,
+					combatants,
 					turnRight: false
 				);
 				break;
 
 			case EnemyMovementType.RightTurner:
 				TakeTurningWalkerTurn(
-					player,
 					occupiedEnemyPositions,
+					combatants,
 					turnRight: true
 				);
 				break;
@@ -145,7 +148,8 @@ public partial class Enemy : CharacterBody2D
 
 	private void TakeSlowChaserTurn(
 		Player player,
-		HashSet<Vector2> occupiedEnemyPositions)
+		HashSet<Vector2> occupiedEnemyPositions,
+		IReadOnlyList<ICombatant> combatants)
 	{
 		if (!_slowChaserHasPreparedMove)
 		{
@@ -156,32 +160,41 @@ public partial class Enemy : CharacterBody2D
 		}
 
 		// Moving uses the direction locked during the previous turn.
-		TryMoveForward(player, occupiedEnemyPositions);
+		TryMoveForward(
+			occupiedEnemyPositions,
+			combatants
+		);
 		_slowChaserHasPreparedMove = false;
 		_facingIndicator.Visible = false;
 	}
 
 	private void TakePatrollerTurn(
-		Player player,
-		HashSet<Vector2> occupiedEnemyPositions)
+		HashSet<Vector2> occupiedEnemyPositions,
+		IReadOnlyList<ICombatant> combatants)
 	{
 		ForwardActionResult result =
-			TryMoveForward(player, occupiedEnemyPositions);
+			TryMoveForward(
+				occupiedEnemyPositions,
+				combatants
+			);
 
 		if (result == ForwardActionResult.Blocked)
 			TurnRight();
 	}
 
 	private void TakeTurningWalkerTurn(
-		Player player,
 		HashSet<Vector2> occupiedEnemyPositions,
+		IReadOnlyList<ICombatant> combatants,
 		bool turnRight)
 	{
 		ForwardActionResult result =
-			TryMoveForward(player, occupiedEnemyPositions);
+			TryMoveForward(
+				occupiedEnemyPositions,
+				combatants
+			);
 
 		// An attack consumes the entire beat.
-		if (result == ForwardActionResult.Attacked)
+		if (result == ForwardActionResult.AttackAction)
 			return;
 
 		// Otherwise turning is the second action, even if movement was blocked.
@@ -209,48 +222,29 @@ public partial class Enemy : CharacterBody2D
 		SetFacingDirection(_facingDirection);
 	}
 
-	private bool CanAttackForward(
-		Vector2 targetPosition,
-		HashSet<Vector2> occupiedEnemyPositions)
-	{
-		for (int distance = 1; distance <= AttackRange; distance++)
-		{
-			Vector2 position =
-				Position +
-				_facingDirection * TileSize * distance;
-
-			if (IsWallAt(position) ||
-				occupiedEnemyPositions.Contains(position))
-			{
-				return false;
-			}
-
-			if (position.IsEqualApprox(targetPosition))
-				return true;
-		}
-
-		return false;
-	}
-
-	private void Attack(Player player)
-	{
-		GD.Print(
-			$"{Name} attacks forward from range {AttackRange}!"
-		);
-		player.TakeDamage(1);
-	}
-
 	private ForwardActionResult TryMoveForward(
-		Player player,
-		HashSet<Vector2> occupiedEnemyPositions)
+		HashSet<Vector2> occupiedEnemyPositions,
+		IReadOnlyList<ICombatant> combatants)
 	{
-		if (CanAttackForward(
-			player.Position,
-			occupiedEnemyPositions
-		))
+		AttackTurnResult attackResult =
+			AttackResolver.TryAttack(
+				this,
+				_facingDirection,
+				Attack,
+				combatants,
+				IsWallAt
+			);
+
+		if (attackResult != AttackTurnResult.NoAttack)
 		{
-			Attack(player);
-			return ForwardActionResult.Attacked;
+			string actionText = attackResult == AttackTurnResult.Preparing
+				? "prepares"
+				: "used";
+
+			GD.Print(
+				$"{Name} {actionText} {Attack.Definition.Name}."
+			);
+			return ForwardActionResult.AttackAction;
 		}
 
 		Vector2 nextPosition =
