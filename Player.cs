@@ -3,6 +3,7 @@ using Godot;
 public partial class Player : CharacterBody2D
 {
 	private const float TileSize = 32.0f;
+	private Polygon2D _facingIndicator;
 
 	[Signal]
 	public delegate void MoveRequestedEventHandler(Vector2 direction);
@@ -14,6 +15,24 @@ public partial class Player : CharacterBody2D
 	public delegate void DiedEventHandler();
 
 	public int Health { get; private set; } = 3;
+
+	public override void _Ready()
+	{
+		_facingIndicator = new Polygon2D
+		{
+			Polygon = new Vector2[]
+			{
+				new(16, 0),
+				new(7, -5),
+				new(7, 5)
+			},
+			Color = Colors.Yellow,
+			ZIndex = 1
+		};
+
+		AddChild(_facingIndicator);
+		SetFacingDirection(Vector2.Down);
+	}
 
 	public override void _UnhandledInput(InputEvent inputEvent)
 	{
@@ -30,6 +49,7 @@ public partial class Player : CharacterBody2D
 
 		if (direction != Vector2.Zero)
 		{
+			SetFacingDirection(direction);
 			EmitSignal(SignalName.MoveRequested, direction);
 			GetViewport().SetInputAsHandled();
 		}
@@ -38,6 +58,11 @@ public partial class Player : CharacterBody2D
 	public void Move(Vector2 direction)
 	{
 		Position += direction * TileSize;
+	}
+
+	private void SetFacingDirection(Vector2 direction)
+	{
+		_facingIndicator.Rotation = direction.Angle();
 	}
 
 	public void TakeDamage(int damage)

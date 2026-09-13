@@ -1,18 +1,23 @@
 using Godot;
+using System.Collections.Generic;
 
 public partial class Main : Node2D
 {
 	private const float TileSize = 32.0f;
 	private const int RoomWidth = 15;
 	private const int RoomHeight = 11;
+	private const int EnemyCount = 3;
 
 	private static readonly Vector2 RoomOrigin = new(64, 64);
 
 	private readonly RandomNumberGenerator _random = new();
+	private readonly List<Enemy> _enemies = new();
 
 	private Player _player;
-	private Enemy _enemy;
 	private Label _healthLabel;
+	private Label _statusLabel;
+	private Button _restartButton;
+	private bool _gameEnded;
 
 	private PackedScene _enemyScene;
 	private PackedScene _wallScene;
@@ -28,14 +33,15 @@ public partial class Main : Node2D
 
 		CreateRoom();
 		PlacePlayerInCenter();
-		SpawnEnemy();
-		CreateHealthDisplay();
+		SpawnEnemies();
+		CreateGameUi();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
 		_player.HealthChanged += OnPlayerHealthChanged;
 		_player.Died += OnPlayerDied;
 
 		GD.Print($"Player health: {_player.Health}");
+		GD.Print($"Spawned {_enemies.Count} enemies.");
 	}
 
 	private Vector2 CellToPosition(int x, int y)
@@ -73,28 +79,37 @@ public partial class Main : Node2D
 		_player.Position = CellToPosition(centerX, centerY);
 	}
 
-	private void SpawnEnemy()
+	private void SpawnEnemies()
 	{
-		int playerX = RoomWidth / 2;
-		int playerY = RoomHeight / 2;
-
-		int enemyX;
-		int enemyY;
-
-		do
+		HashSet<Vector2> occupiedPositions = new()
 		{
-			enemyX = _random.RandiRange(1, RoomWidth - 2);
-			enemyY = _random.RandiRange(1, RoomHeight - 2);
-		}
-		while (enemyX == playerX && enemyY == playerY);
+			_player.Position
+		};
 
-		_enemy = _enemyScene.Instantiate<Enemy>();
-		_enemy.Name = "Enemy";
-		_enemy.Position = CellToPosition(enemyX, enemyY);
-		AddChild(_enemy);
+		for (int i = 0; i < EnemyCount; i++)
+		{
+			Vector2 enemyPosition;
+
+			do
+			{
+				int enemyX = _random.RandiRange(1, RoomWidth - 2);
+				int enemyY = _random.RandiRange(1, RoomHeight - 2);
+				enemyPosition = CellToPosition(enemyX, enemyY);
+			}
+			while (occupiedPositions.Contains(enemyPosition));
+
+			Enemy enemy = _enemyScene.Instantiate<Enemy>();
+			enemy.Name = $"Enemy{i + 1}";
+			enemy.Position = enemyPosition;
+
+			occupiedPositions.Add(enemyPosition);
+			_enemies.Add(enemy);
+			AddChild(enemy);
+			enemy.PrepareNextMove(_player.Position);
+		}
 	}
 
-	private void CreateHealthDisplay()
+	private void CreateGameUi()
 	{
 		CanvasLayer canvasLayer = new();
 		AddChild(canvasLayer);
@@ -104,10 +119,28 @@ public partial class Main : Node2D
 			Position = new Vector2(16, 16),
 			Text = $"HP: {_player.Health}"
 		};
-
 		_healthLabel.AddThemeFontSizeOverride("font_size", 24);
 		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
 		canvasLayer.AddChild(_healthLabel);
+
+		_statusLabel = new Label
+		{
+			Position = new Vector2(188, 176),
+			Size = new Vector2(200, 40),
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		_statusLabel.AddThemeFontSizeOverride("font_size", 28);
+		canvasLayer.AddChild(_statusLabel);
+
+		_restartButton = new Button
+		{
+			Position = new Vector2(228, 224),
+			Size = new Vector2(120, 40),
+			Text = "Restart",
+			Visible = false
+		};
+		_restartButton.Pressed += OnRestartPressed;
+		canvasLayer.AddChild(_restartButton);
 	}
 
 	private bool IsWallAt(Vector2 position)
@@ -124,44 +157,125 @@ public partial class Main : Node2D
 		return false;
 	}
 
+	private Enemy FindEnemyAt(Vector2 position)
+	{
+		foreach (Enemy enemy in _enemies)
+		{
+			if (IsEnemyActive(enemy) &&
+				enemy.Position.IsEqualApprox(position))
+			{
+				return enemy;
+			}
+		}
+
+		return null;
+	}
+
+	private bool IsEnemyActive(Enemy enemy)
+	{
+		return IsInstanceValid(enemy) &&
+			!enemy.IsQueuedForDeletion();
+	}
+
+	private void RemoveDefeatedEnemies()
+	{
+		for (int i = _enemies.Count - 1; i >= 0; i--)
+		{
+			if (!IsEnemyActive(_enemies[i]))
+				_enemies.RemoveAt(i);
+		}
+	}
+
+	private HashSet<Vector2> GetOccupiedEnemyPositions(Enemy movingEnemy)
+	{
+		HashSet<Vector2> occupiedPositions = new();
+
+		foreach (Enemy enemy in _enemies)
+		{
+			if (enemy != movingEnemy && IsEnemyActive(enemy))
+				occupiedPositions.Add(enemy.Position);
+		}
+
+		return occupiedPositions;
+	}
+
+	private void TakeEnemyTurns(Enemy attackedEnemy)
+	{
+		foreach (Enemy enemy in _enemies)
+		{
+			if (!IsEnemyActive(enemy) || enemy == attackedEnemy)
+				continue;
+
+			HashSet<Vector2> occupiedPositions =
+				GetOccupiedEnemyPositions(enemy);
+
+			enemy.TakeTurn(
+				_player,
+				occupiedPositions
+			);
+
+			if (_player.Health <= 0)
+				break;
+		}
+	}
+
 	private void OnPlayerMoveRequested(Vector2 direction)
 	{
+		if (_gameEnded)
+			return;
+
 		Vector2 targetPosition =
 			_player.Position + direction * TileSize;
 
-		bool enemyExists =
-			IsInstanceValid(_enemy) &&
-			!_enemy.IsQueuedForDeletion();
+		Enemy attackedEnemy = FindEnemyAt(targetPosition);
 
-		bool playerAttacked = false;
-		bool turnTaken = false;
-
-		if (enemyExists &&
-			targetPosition.IsEqualApprox(_enemy.Position))
+		if (attackedEnemy != null)
 		{
-			_enemy.TakeDamage(1);
-			playerAttacked = true;
-			turnTaken = true;
+			attackedEnemy.TakeDamage(1);
 		}
 		else if (!IsWallAt(targetPosition))
 		{
 			_player.Move(direction);
-			turnTaken = true;
 		}
 		else
 		{
 			GD.Print($"Player hit wall at {targetPosition}");
-			turnTaken = true;
 		}
 
-		if (turnTaken &&
-			!playerAttacked &&
-			_player.Health > 0 &&
-			IsInstanceValid(_enemy) &&
-			!_enemy.IsQueuedForDeletion())
-		{
-			_enemy.TakeTurn(_player);
-		}
+		RemoveDefeatedEnemies();
+		CheckForVictory();
+
+		if (_gameEnded)
+			return;
+
+		TakeEnemyTurns(attackedEnemy);
+
+		RemoveDefeatedEnemies();
+		CheckForVictory();
+	}
+
+	private void CheckForVictory()
+	{
+		if (!_gameEnded && _enemies.Count == 0)
+			EndGame(true);
+	}
+
+	private void EndGame(bool playerWon)
+	{
+		if (_gameEnded)
+			return;
+
+		_gameEnded = true;
+		_player.SetProcessUnhandledInput(false);
+
+		_statusLabel.Text = playerWon ? "YOU WIN!" : "GAME OVER";
+		_statusLabel.AddThemeColorOverride(
+			"font_color",
+			playerWon ? Colors.LimeGreen : Colors.IndianRed
+		);
+		_restartButton.Visible = true;
+
+		GD.Print(playerWon ? "Room cleared!" : "Game over!");
 	}
 
 	private void OnPlayerHealthChanged(int health)
@@ -171,6 +285,12 @@ public partial class Main : Node2D
 
 	private void OnPlayerDied()
 	{
-		_healthLabel.Text = "HP: 0 - GAME OVER";
+		_healthLabel.Text = "HP: 0";
+		EndGame(false);
+	}
+
+	private void OnRestartPressed()
+	{
+		GetTree().ReloadCurrentScene();
 	}
 }
