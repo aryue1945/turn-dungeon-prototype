@@ -13,9 +13,11 @@ public enum EnemyMovementType
 public partial class Enemy : CharacterBody2D
 {
 	private const float TileSize = 32.0f;
+	private const int MaxHealth = 2;
 
-	private int _health = 2;
+	private int _health = MaxHealth;
 	private Polygon2D _facingIndicator;
+	private ProgressBar _healthBar;
 	private Vector2 _facingDirection = Vector2.Down;
 	private bool _slowChaserHasPreparedMove;
 
@@ -59,12 +61,18 @@ public partial class Enemy : CharacterBody2D
 		AddChild(_facingIndicator);
 		SetFacingDirection(_facingDirection);
 		ApplyTypeDisplay();
+		CreateHealthBar();
 	}
 
 	public void TakeDamage(int damage)
 	{
 		_health -= damage;
-		GD.Print($"{Name} health: {_health}");
+
+		if (_health < 0)
+			_health = 0;
+
+		_healthBar.Value = _health;
+		GD.Print($"{Name} health: {_health}/{MaxHealth}");
 
 		if (_health <= 0)
 		{
@@ -279,6 +287,35 @@ public partial class Enemy : CharacterBody2D
 		label.AddThemeFontSizeOverride("font_size", 10);
 		label.AddThemeColorOverride("font_color", Colors.White);
 		AddChild(label);
+	}
+
+	private void CreateHealthBar()
+	{
+		_healthBar = new ProgressBar
+		{
+			Position = new Vector2(-16, -26),
+			Size = new Vector2(32, 7),
+			MinValue = 0,
+			MaxValue = MaxHealth,
+			Value = _health,
+			ShowPercentage = false,
+			MouseFilter = Control.MouseFilterEnum.Ignore,
+			ZIndex = 3
+		};
+
+		StyleBoxFlat backgroundStyle = new()
+		{
+			BgColor = new Color(0.12f, 0.12f, 0.12f)
+		};
+
+		StyleBoxFlat fillStyle = new()
+		{
+			BgColor = new Color(0.2f, 0.9f, 0.25f)
+		};
+
+		_healthBar.AddThemeStyleboxOverride("background", backgroundStyle);
+		_healthBar.AddThemeStyleboxOverride("fill", fillStyle);
+		AddChild(_healthBar);
 	}
 
 	private void SetFacingDirection(Vector2 direction)
