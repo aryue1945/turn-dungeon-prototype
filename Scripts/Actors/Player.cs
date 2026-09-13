@@ -17,8 +17,10 @@ public partial class Player : CharacterBody2D, ICombatant
 	public int Health { get; private set; } = 3;
 	public bool IsAlive => Health > 0;
 	public CombatFaction Faction => CombatFaction.Player;
+	public WeaponDefinition Weapon { get; private set; } =
+		WeaponDefinitions.BasicSword;
 	public AttackState Attack { get; } = new(
-		AttackDefinitions.BasicStrike
+		WeaponDefinitions.BasicSword.PrimaryAttack
 	);
 
 	public override void _Ready()
@@ -60,11 +62,16 @@ public partial class Player : CharacterBody2D, ICombatant
 		}
 	}
 
+	public void EquipWeapon(WeaponDefinition weapon)
+	{
+		Weapon = weapon;
+		Attack.Equip(weapon.PrimaryAttack);
+	}
+
 	public void Move(Vector2 direction)
 	{
 		Position += direction * TileSize;
 	}
-
 
 	private void SetFacingDirection(Vector2 direction)
 	{

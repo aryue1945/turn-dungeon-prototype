@@ -38,7 +38,7 @@ public static class AttackResolver
 
 		AttackDefinition definition = attackState.Definition;
 
-		if (!HasActivationTarget(
+		if (!HasDetectionTarget(
 			attacker,
 			requestedDirection,
 			definition,
@@ -66,23 +66,23 @@ public static class AttackResolver
 		return AttackTurnResult.Attacked;
 	}
 
-	private static bool HasActivationTarget(
+	private static bool HasDetectionTarget(
 		ICombatant attacker,
 		Vector2 direction,
 		AttackDefinition definition,
 		IReadOnlyList<ICombatant> combatants,
 		Func<Vector2, bool> isWallAt)
 	{
-		for (int distance = 1;
-			distance <= definition.ActivationRange;
-			distance++)
+		foreach (AttackOffset offset in definition.DetectionOffsets)
 		{
-			Vector2 position =
-				attacker.Position +
-				direction * TileSize * distance;
+			Vector2 position = GetPatternPosition(
+				attacker.Position,
+				direction,
+				offset
+			);
 
-			if (isWallAt(position) && definition.StopsAtWalls)
-				return false;
+			if (definition.StopsAtWalls && isWallAt(position))
+				break;
 
 			ICombatant target = FindCombatantAt(
 				position,
@@ -90,14 +90,11 @@ public static class AttackResolver
 				combatants
 			);
 
-			if (target == null)
-				continue;
-
-			if (IsValidTarget(attacker, target, definition))
+			if (target != null &&
+				IsValidTarget(attacker, target, definition))
+			{
 				return true;
-
-			if (definition.StopsAtActors)
-				return false;
+			}
 		}
 
 		return false;
@@ -110,16 +107,18 @@ public static class AttackResolver
 		IReadOnlyList<ICombatant> combatants,
 		Func<Vector2, bool> isWallAt)
 	{
-		for (int distance = 1;
-			distance <= definition.EffectRange;
-			distance++)
-		{
-			Vector2 position =
-				attacker.Position +
-				direction * TileSize * distance;
+		HashSet<ICombatant> hitTargets = new();
 
-			if (isWallAt(position) && definition.StopsAtWalls)
-				return;
+		foreach (AttackOffset offset in definition.AttackOffsets)
+		{
+			Vector2 position = GetPatternPosition(
+				attacker.Position,
+				direction,
+				offset
+			);
+
+			if (definition.StopsAtWalls && isWallAt(position))
+				break;
 
 			ICombatant target = FindCombatantAt(
 				position,
@@ -127,24 +126,32 @@ public static class AttackResolver
 				combatants
 			);
 
-			if (target == null)
-				continue;
-
-			bool isValidTarget =
-				IsValidTarget(attacker, target, definition);
-
-			if (isValidTarget)
-				target.TakeDamage(definition.Damage);
-
-			if (isValidTarget &&
-				definition.Pattern == AttackPattern.FirstTarget)
+			if (target == null ||
+				hitTargets.Contains(target) ||
+				!IsValidTarget(attacker, target, definition))
 			{
-				return;
+				continue;
 			}
 
-			if (definition.StopsAtActors)
-				return;
+			target.TakeDamage(definition.Damage);
+			hitTargets.Add(target);
+
+			if (hitTargets.Count >= definition.MaxTargets)
+				break;
 		}
+	}
+
+	private static Vector2 GetPatternPosition(
+		Vector2 origin,
+		Vector2 direction,
+		AttackOffset offset)
+	{
+		Vector2 right = new(-direction.Y, direction.X);
+		Vector2 gridOffset =
+			direction * offset.Forward +
+			right * offset.Right;
+
+		return origin + gridOffset * TileSize;
 	}
 
 	private static ICombatant FindCombatantAt(

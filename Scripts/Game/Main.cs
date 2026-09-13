@@ -22,8 +22,11 @@ public partial class Main : Node2D
 
 	private Player _player;
 	private Label _healthLabel;
+	private Label _weaponLabel;
 	private Label _statusLabel;
 	private Button _restartButton;
+	private Panel _weaponSelectionPanel;
+	private bool _gameStarted;
 	private bool _gameEnded;
 
 	private PackedScene _enemyScene;
@@ -42,6 +45,7 @@ public partial class Main : Node2D
 		PlacePlayerInCenter();
 		SpawnEnemies();
 		CreateGameUi();
+		CreateWeaponSelection();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
 		_player.HealthChanged += OnPlayerHealthChanged;
@@ -131,6 +135,15 @@ public partial class Main : Node2D
 		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
 		canvasLayer.AddChild(_healthLabel);
 
+		_weaponLabel = new Label
+		{
+			Position = new Vector2(16, 48),
+			Text = "Weapon: not selected"
+		};
+		_weaponLabel.AddThemeFontSizeOverride("font_size", 16);
+		_weaponLabel.AddThemeColorOverride("font_color", Colors.White);
+		canvasLayer.AddChild(_weaponLabel);
+
 		_statusLabel = new Label
 		{
 			Position = new Vector2(188, 176),
@@ -149,6 +162,53 @@ public partial class Main : Node2D
 		};
 		_restartButton.Pressed += OnRestartPressed;
 		canvasLayer.AddChild(_restartButton);
+	}
+
+
+	private void CreateWeaponSelection()
+	{
+		CanvasLayer selectionLayer = new()
+		{
+			Layer = 10
+		};
+		AddChild(selectionLayer);
+
+		_weaponSelectionPanel = new Panel
+		{
+			Position = new Vector2(160, 112),
+			Size = new Vector2(256, 220)
+		};
+		selectionLayer.AddChild(_weaponSelectionPanel);
+
+		Label titleLabel = new()
+		{
+			Position = new Vector2(24, 20),
+			Size = new Vector2(208, 32),
+			Text = "Choose a weapon",
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		titleLabel.AddThemeFontSizeOverride("font_size", 22);
+		_weaponSelectionPanel.AddChild(titleLabel);
+
+		Button basicSwordButton = new()
+		{
+			Position = new Vector2(48, 76),
+			Size = new Vector2(160, 48),
+			Text = "Basic Sword"
+		};
+		basicSwordButton.Pressed += OnBasicSwordSelected;
+		_weaponSelectionPanel.AddChild(basicSwordButton);
+
+		Button longSwordButton = new()
+		{
+			Position = new Vector2(48, 136),
+			Size = new Vector2(160, 48),
+			Text = "Long Sword"
+		};
+		longSwordButton.Pressed += OnLongSwordSelected;
+		_weaponSelectionPanel.AddChild(longSwordButton);
+
+		_player.SetProcessUnhandledInput(false);
 	}
 
 	private bool IsWallAt(Vector2 position)
@@ -232,7 +292,7 @@ public partial class Main : Node2D
 
 	private void OnPlayerMoveRequested(Vector2 direction)
 	{
-		if (_gameEnded)
+		if (_gameEnded || !_gameStarted)
 			return;
 
 		Vector2 targetPosition =
@@ -310,6 +370,27 @@ public partial class Main : Node2D
 	{
 		_healthLabel.Text = "HP: 0";
 		EndGame(false);
+	}
+
+	private void OnBasicSwordSelected()
+	{
+		SelectWeapon(WeaponDefinitions.BasicSword);
+	}
+
+	private void OnLongSwordSelected()
+	{
+		SelectWeapon(WeaponDefinitions.LongSword);
+	}
+
+	private void SelectWeapon(WeaponDefinition weapon)
+	{
+		_player.EquipWeapon(weapon);
+		_weaponLabel.Text = $"Weapon: {_player.Weapon.Name}";
+		_weaponSelectionPanel.Visible = false;
+		_gameStarted = true;
+		_player.SetProcessUnhandledInput(true);
+
+		GD.Print($"Equipped {_player.Weapon.Name}.");
 	}
 
 	private void OnRestartPressed()

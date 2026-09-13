@@ -1,9 +1,15 @@
 using Godot;
 
-public enum AttackPattern
+public readonly struct AttackOffset
 {
-	FirstTarget,
-	PiercingLine
+	public int Forward { get; }
+	public int Right { get; }
+
+	public AttackOffset(int forward, int right)
+	{
+		Forward = forward;
+		Right = right;
+	}
 }
 
 public enum AttackTargetRule
@@ -38,34 +44,31 @@ public sealed class AttackDefinition
 {
 	public string Name { get; }
 	public int Damage { get; }
-	public int ActivationRange { get; }
-	public int EffectRange { get; }
 	public int PreparationTurns { get; }
-	public AttackPattern Pattern { get; }
+	public AttackOffset[] DetectionOffsets { get; }
+	public AttackOffset[] AttackOffsets { get; }
 	public AttackTargetRule TargetRule { get; }
 	public bool StopsAtWalls { get; }
-	public bool StopsAtActors { get; }
+	public int MaxTargets { get; }
 
 	public AttackDefinition(
 		string name,
 		int damage,
-		int activationRange,
-		int effectRange,
 		int preparationTurns,
-		AttackPattern pattern,
+		AttackOffset[] detectionOffsets,
+		AttackOffset[] attackOffsets,
 		AttackTargetRule targetRule,
 		bool stopsAtWalls,
-		bool stopsAtActors)
+		int maxTargets)
 	{
 		Name = name;
 		Damage = damage;
-		ActivationRange = activationRange;
-		EffectRange = effectRange;
 		PreparationTurns = preparationTurns;
-		Pattern = pattern;
+		DetectionOffsets = detectionOffsets;
+		AttackOffsets = attackOffsets;
 		TargetRule = targetRule;
 		StopsAtWalls = stopsAtWalls;
-		StopsAtActors = stopsAtActors;
+		MaxTargets = maxTargets;
 	}
 }
 
@@ -121,15 +124,19 @@ public sealed class AttackState
 
 public static class AttackDefinitions
 {
-	public static readonly AttackDefinition BasicStrike = new(
-		name: "Basic Strike",
+	private static readonly AttackOffset[] OneCellForward =
+	{
+		new(1, 0)
+	};
+
+	public static readonly AttackDefinition BasicEnemyStrike = new(
+		name: "Basic Enemy Strike",
 		damage: 1,
-		activationRange: 1,
-		effectRange: 1,
 		preparationTurns: 0,
-		pattern: AttackPattern.FirstTarget,
+		detectionOffsets: OneCellForward,
+		attackOffsets: OneCellForward,
 		targetRule: AttackTargetRule.OpponentsOnly,
 		stopsAtWalls: true,
-		stopsAtActors: true
+		maxTargets: 1
 	);
 }

@@ -1,0 +1,19 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Debug Godot Game",
+            "type": "coreclr",
+            "request": "launch",
+            "preLaunchTask": "test",
+            "program": "C:\\Godot_v4.7.2-stable_mono_win64\\Godot_v4.7.2-stable_mono_win64\\Godot_v4.7.2-stable_mono_win64_console.exe",
+            "args": [
+                "--path",
+                "${workspaceFolder}"
+            ],
+            "cwd": "${workspaceFolder}",
+            "console": "integratedTerminal",
+            "stopAtEntry": false
+        }
+    ]
+}
