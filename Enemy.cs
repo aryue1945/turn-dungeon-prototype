@@ -15,7 +15,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 	private enum ForwardActionResult
 	{
 		Moved,
-		Attacked,
+		AttackAction,
 		Blocked
 	}
 
@@ -127,7 +127,6 @@ public partial class Enemy : CharacterBody2D, ICombatant
 
 			case EnemyMovementType.LeftTurner:
 				TakeTurningWalkerTurn(
-					player,
 					occupiedEnemyPositions,
 					combatants,
 					turnRight: false
@@ -136,7 +135,6 @@ public partial class Enemy : CharacterBody2D, ICombatant
 
 			case EnemyMovementType.RightTurner:
 				TakeTurningWalkerTurn(
-					player,
 					occupiedEnemyPositions,
 					combatants,
 					turnRight: true
@@ -185,7 +183,6 @@ public partial class Enemy : CharacterBody2D, ICombatant
 	}
 
 	private void TakeTurningWalkerTurn(
-		Player player,
 		HashSet<Vector2> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants,
 		bool turnRight)
@@ -197,7 +194,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 			);
 
 		// An attack consumes the entire beat.
-		if (result == ForwardActionResult.Attacked)
+		if (result == ForwardActionResult.AttackAction)
 			return;
 
 		// Otherwise turning is the second action, even if movement was blocked.
@@ -240,10 +237,14 @@ public partial class Enemy : CharacterBody2D, ICombatant
 
 		if (attackResult != AttackTurnResult.NoAttack)
 		{
+			string actionText = attackResult == AttackTurnResult.Preparing
+				? "prepares"
+				: "used";
+
 			GD.Print(
-				$"{Name} used {Attack.Definition.Name}."
+				$"{Name} {actionText} {Attack.Definition.Name}."
 			);
-			return ForwardActionResult.Attacked;
+			return ForwardActionResult.AttackAction;
 		}
 
 		Vector2 nextPosition =
@@ -258,6 +259,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		Position = nextPosition;
 		return ForwardActionResult.Moved;
 	}
+
 	private void ApplyTypeDisplay()
 	{
 		Sprite2D sprite = GetNode<Sprite2D>("Sprite2D");
