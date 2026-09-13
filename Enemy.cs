@@ -12,6 +12,13 @@ public enum EnemyMovementType
 
 public partial class Enemy : CharacterBody2D
 {
+	private enum ForwardActionResult
+	{
+		Moved,
+		Attacked,
+		Blocked
+	}
+
 	private const float TileSize = 32.0f;
 	private const int MaxHealth = 2;
 
@@ -105,12 +112,6 @@ public partial class Enemy : CharacterBody2D
 		Player player,
 		HashSet<Vector2> occupiedEnemyPositions)
 	{
-		if (CanAttack(player.Position))
-		{
-			Attack(player);
-			return;
-		}
-
 		switch (MovementType)
 		{
 			case EnemyMovementType.SlowChaser:
@@ -155,7 +156,7 @@ public partial class Enemy : CharacterBody2D
 		}
 
 		// Moving uses the direction locked during the previous turn.
-		TryMoveForward(occupiedEnemyPositions);
+		TryMoveForward(player, occupiedEnemyPositions);
 		_slowChaserHasPreparedMove = false;
 		_facingIndicator.Visible = false;
 	}
@@ -164,10 +165,10 @@ public partial class Enemy : CharacterBody2D
 		Player player,
 		HashSet<Vector2> occupiedEnemyPositions)
 	{
-		bool completedAction =
-			TryMoveForward(occupiedEnemyPositions);
+		ForwardActionResult result =
+			TryMoveForward(player, occupiedEnemyPositions);
 
-		if (!completedAction)
+		if (result == ForwardActionResult.Blocked)
 			TurnRight();
 	}
 
@@ -176,10 +177,14 @@ public partial class Enemy : CharacterBody2D
 		HashSet<Vector2> occupiedEnemyPositions,
 		bool turnRight)
 	{
-		// Moving or attacking is the first action in the beat.
-		TryMoveForward(occupiedEnemyPositions);
+		ForwardActionResult result =
+			TryMoveForward(player, occupiedEnemyPositions);
 
-		// Turning always happens as the second action, even if blocked.
+		// An attack consumes the entire beat.
+		if (result == ForwardActionResult.Attacked)
+			return;
+
+		// Otherwise turning is the second action, even if movement was blocked.
 		if (turnRight)
 			TurnRight();
 		else
@@ -204,43 +209,61 @@ public partial class Enemy : CharacterBody2D
 		SetFacingDirection(_facingDirection);
 	}
 
-	private bool CanAttack(Vector2 targetPosition)
+	private bool CanAttackForward(
+		Vector2 targetPosition,
+		HashSet<Vector2> occupiedEnemyPositions)
 	{
-		Vector2 difference = targetPosition - Position;
-		int horizontalTiles =
-			Mathf.RoundToInt(Mathf.Abs(difference.X) / TileSize);
-		int verticalTiles =
-			Mathf.RoundToInt(Mathf.Abs(difference.Y) / TileSize);
+		for (int distance = 1; distance <= AttackRange; distance++)
+		{
+			Vector2 position =
+				Position +
+				_facingDirection * TileSize * distance;
 
-		bool isInStraightLine =
-			horizontalTiles == 0 || verticalTiles == 0;
-		int distanceInTiles = horizontalTiles + verticalTiles;
+			if (IsWallAt(position) ||
+				occupiedEnemyPositions.Contains(position))
+			{
+				return false;
+			}
 
-		return isInStraightLine &&
-			distanceInTiles >= 1 &&
-			distanceInTiles <= AttackRange;
+			if (position.IsEqualApprox(targetPosition))
+				return true;
+		}
+
+		return false;
 	}
 
 	private void Attack(Player player)
 	{
-		GD.Print($"{Name} attacks player from range {AttackRange}!");
+		GD.Print(
+			$"{Name} attacks forward from range {AttackRange}!"
+		);
 		player.TakeDamage(1);
 	}
 
-	private bool TryMoveForward(
+	private ForwardActionResult TryMoveForward(
+		Player player,
 		HashSet<Vector2> occupiedEnemyPositions)
 	{
+		if (CanAttackForward(
+			player.Position,
+			occupiedEnemyPositions
+		))
+		{
+			Attack(player);
+			return ForwardActionResult.Attacked;
+		}
+
 		Vector2 nextPosition =
 			Position + _facingDirection * TileSize;
 
 		if (IsWallAt(nextPosition) ||
 			occupiedEnemyPositions.Contains(nextPosition))
 		{
-			return false;
+			return ForwardActionResult.Blocked;
 		}
 
 		Position = nextPosition;
-		return true;
+		return ForwardActionResult.Moved;
 	}
 
 	private void ApplyTypeDisplay()
