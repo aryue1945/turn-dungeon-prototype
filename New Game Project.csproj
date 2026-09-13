@@ -5,4 +5,8 @@
     <EnableDynamicLoading>true</EnableDynamicLoading>
     <RootNamespace>NewGameProject</RootNamespace>
   </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Remove="Tests/**/*.cs" />
+  </ItemGroup>
 </Project>
