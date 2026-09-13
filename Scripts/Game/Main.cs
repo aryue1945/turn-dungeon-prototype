@@ -25,7 +25,8 @@ public partial class Main : Node2D
 	private Label _weaponLabel;
 	private Label _statusLabel;
 	private Button _restartButton;
-	private Panel _weaponSelectionPanel;
+	private Control _endGameOverlay;
+	private Control _weaponSelectionPanel;
 	private bool _gameStarted;
 	private bool _gameEnded;
 
@@ -42,6 +43,7 @@ public partial class Main : Node2D
 		_random.Randomize();
 
 		CreateRoom();
+		CreateRoomCamera();
 		PlacePlayerInCenter();
 		SpawnEnemies();
 		CreateGameUi();
@@ -58,6 +60,20 @@ public partial class Main : Node2D
 	private Vector2 CellToPosition(int x, int y)
 	{
 		return RoomOrigin + new Vector2(x * TileSize, y * TileSize);
+	}
+
+	private void CreateRoomCamera()
+	{
+		Camera2D camera = new()
+		{
+			Position = RoomOrigin + new Vector2(
+				(RoomWidth - 1) * TileSize / 2.0f,
+				(RoomHeight - 1) * TileSize / 2.0f
+			)
+		};
+
+		AddChild(camera);
+		camera.MakeCurrent();
 	}
 
 	private void CreateRoom()
@@ -121,49 +137,97 @@ public partial class Main : Node2D
 		}
 	}
 
+	private static Control CreateFullRectRoot(CanvasLayer layer)
+	{
+		Control root = new();
+		layer.AddChild(root);
+		root.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+		return root;
+	}
+
 	private void CreateGameUi()
 	{
 		CanvasLayer canvasLayer = new();
 		AddChild(canvasLayer);
 
+		Control uiRoot = CreateFullRectRoot(canvasLayer);
+
+		PanelContainer hudPanel = new();
+		uiRoot.AddChild(hudPanel);
+		hudPanel.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+		hudPanel.OffsetLeft = 12;
+		hudPanel.OffsetTop = 12;
+		hudPanel.OffsetRight = 224;
+		hudPanel.OffsetBottom = 88;
+
+		MarginContainer hudMargin = new();
+		hudMargin.AddThemeConstantOverride("margin_left", 10);
+		hudMargin.AddThemeConstantOverride("margin_top", 6);
+		hudMargin.AddThemeConstantOverride("margin_right", 10);
+		hudMargin.AddThemeConstantOverride("margin_bottom", 6);
+		hudPanel.AddChild(hudMargin);
+
+		VBoxContainer hud = new();
+		hud.AddThemeConstantOverride("separation", 2);
+		hudMargin.AddChild(hud);
+
 		_healthLabel = new Label
 		{
-			Position = new Vector2(16, 16),
 			Text = $"HP: {_player.Health}"
 		};
 		_healthLabel.AddThemeFontSizeOverride("font_size", 24);
 		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
-		canvasLayer.AddChild(_healthLabel);
+		hud.AddChild(_healthLabel);
 
 		_weaponLabel = new Label
 		{
-			Position = new Vector2(16, 48),
 			Text = "Weapon: not selected"
 		};
 		_weaponLabel.AddThemeFontSizeOverride("font_size", 16);
 		_weaponLabel.AddThemeColorOverride("font_color", Colors.White);
-		canvasLayer.AddChild(_weaponLabel);
+		hud.AddChild(_weaponLabel);
+
+		CenterContainer endGameCenter = new();
+		uiRoot.AddChild(endGameCenter);
+		endGameCenter.SetAnchorsAndOffsetsPreset(
+			Control.LayoutPreset.FullRect
+		);
+
+		PanelContainer endGamePanel = new()
+		{
+			CustomMinimumSize = new Vector2(260, 120),
+			Visible = false
+		};
+		endGameCenter.AddChild(endGamePanel);
+		_endGameOverlay = endGamePanel;
+
+		MarginContainer endGameMargin = new();
+		endGameMargin.AddThemeConstantOverride("margin_left", 20);
+		endGameMargin.AddThemeConstantOverride("margin_top", 16);
+		endGameMargin.AddThemeConstantOverride("margin_right", 20);
+		endGameMargin.AddThemeConstantOverride("margin_bottom", 16);
+		endGamePanel.AddChild(endGameMargin);
+
+		VBoxContainer endGameBox = new();
+		endGameBox.AddThemeConstantOverride("separation", 12);
+		endGameMargin.AddChild(endGameBox);
 
 		_statusLabel = new Label
 		{
-			Position = new Vector2(188, 176),
-			Size = new Vector2(200, 40),
+			CustomMinimumSize = new Vector2(220, 40),
 			HorizontalAlignment = Godot.HorizontalAlignment.Center
 		};
 		_statusLabel.AddThemeFontSizeOverride("font_size", 28);
-		canvasLayer.AddChild(_statusLabel);
+		endGameBox.AddChild(_statusLabel);
 
 		_restartButton = new Button
 		{
-			Position = new Vector2(228, 224),
-			Size = new Vector2(120, 40),
-			Text = "Restart",
-			Visible = false
+			CustomMinimumSize = new Vector2(160, 40),
+			Text = "Restart"
 		};
 		_restartButton.Pressed += OnRestartPressed;
-		canvasLayer.AddChild(_restartButton);
+		endGameBox.AddChild(_restartButton);
 	}
-
 
 	private void CreateWeaponSelection()
 	{
@@ -173,40 +237,65 @@ public partial class Main : Node2D
 		};
 		AddChild(selectionLayer);
 
-		_weaponSelectionPanel = new Panel
+		Control selectionRoot = CreateFullRectRoot(selectionLayer);
+
+		ColorRect backdrop = new()
 		{
-			Position = new Vector2(160, 112),
-			Size = new Vector2(256, 220)
+			Color = new Color(0, 0, 0, 0.55f)
 		};
-		selectionLayer.AddChild(_weaponSelectionPanel);
+		selectionRoot.AddChild(backdrop);
+		backdrop.SetAnchorsAndOffsetsPreset(
+			Control.LayoutPreset.FullRect
+		);
+
+		CenterContainer selectionCenter = new();
+		selectionRoot.AddChild(selectionCenter);
+		selectionCenter.SetAnchorsAndOffsetsPreset(
+			Control.LayoutPreset.FullRect
+		);
+
+		PanelContainer selectionPanel = new()
+		{
+			CustomMinimumSize = new Vector2(280, 220)
+		};
+		selectionCenter.AddChild(selectionPanel);
+		_weaponSelectionPanel = selectionRoot;
+
+		MarginContainer selectionMargin = new();
+		selectionMargin.AddThemeConstantOverride("margin_left", 24);
+		selectionMargin.AddThemeConstantOverride("margin_top", 20);
+		selectionMargin.AddThemeConstantOverride("margin_right", 24);
+		selectionMargin.AddThemeConstantOverride("margin_bottom", 20);
+		selectionPanel.AddChild(selectionMargin);
+
+		VBoxContainer selectionBox = new();
+		selectionBox.AddThemeConstantOverride("separation", 12);
+		selectionMargin.AddChild(selectionBox);
 
 		Label titleLabel = new()
 		{
-			Position = new Vector2(24, 20),
-			Size = new Vector2(208, 32),
+			CustomMinimumSize = new Vector2(208, 36),
 			Text = "Choose a weapon",
 			HorizontalAlignment = Godot.HorizontalAlignment.Center
 		};
 		titleLabel.AddThemeFontSizeOverride("font_size", 22);
-		_weaponSelectionPanel.AddChild(titleLabel);
+		selectionBox.AddChild(titleLabel);
 
 		Button basicSwordButton = new()
 		{
-			Position = new Vector2(48, 76),
-			Size = new Vector2(160, 48),
+			CustomMinimumSize = new Vector2(208, 44),
 			Text = "Basic Sword"
 		};
 		basicSwordButton.Pressed += OnBasicSwordSelected;
-		_weaponSelectionPanel.AddChild(basicSwordButton);
+		selectionBox.AddChild(basicSwordButton);
 
 		Button longSwordButton = new()
 		{
-			Position = new Vector2(48, 136),
-			Size = new Vector2(160, 48),
+			CustomMinimumSize = new Vector2(208, 44),
 			Text = "Long Sword"
 		};
 		longSwordButton.Pressed += OnLongSwordSelected;
-		_weaponSelectionPanel.AddChild(longSwordButton);
+		selectionBox.AddChild(longSwordButton);
 
 		_player.SetProcessUnhandledInput(false);
 	}
@@ -356,7 +445,7 @@ public partial class Main : Node2D
 			"font_color",
 			playerWon ? Colors.LimeGreen : Colors.IndianRed
 		);
-		_restartButton.Visible = true;
+		_endGameOverlay.Visible = true;
 
 		GD.Print(playerWon ? "Room cleared!" : "Game over!");
 	}
