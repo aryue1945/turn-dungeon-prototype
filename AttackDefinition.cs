@@ -108,6 +108,7 @@ public sealed class AttackState
 	{
 		IsPreparing = false;
 		RemainingPreparationTurns = 0;
+		PreparedDirection = Vector2.Zero;
 	}
 
 	public void CancelPreparation()
