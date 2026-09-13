@@ -5,6 +5,8 @@ public enum EnemyMovementType
 {
 	SlowChaser,
 	Patroller,
+	LeftTurner,
+	RightTurner,
 	Stationary
 }
 
@@ -94,6 +96,22 @@ public partial class Enemy : CharacterBody2D
 				TakePatrollerTurn(player, occupiedEnemyPositions);
 				break;
 
+			case EnemyMovementType.LeftTurner:
+				TakeTurningWalkerTurn(
+					player,
+					occupiedEnemyPositions,
+					turnRight: false
+				);
+				break;
+
+			case EnemyMovementType.RightTurner:
+				TakeTurningWalkerTurn(
+					player,
+					occupiedEnemyPositions,
+					turnRight: true
+				);
+				break;
+
 			case EnemyMovementType.Stationary:
 				break;
 		}
@@ -125,13 +143,40 @@ public partial class Enemy : CharacterBody2D
 			TryMoveForward(player, occupiedEnemyPositions);
 
 		if (!completedAction)
-		{
-			_facingDirection = new Vector2(
-				-_facingDirection.Y,
-				_facingDirection.X
-			);
-			SetFacingDirection(_facingDirection);
-		}
+			TurnRight();
+	}
+
+	private void TakeTurningWalkerTurn(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions,
+		bool turnRight)
+	{
+		// Moving or attacking is the first action in the beat.
+		TryMoveForward(player, occupiedEnemyPositions);
+
+		// Turning always happens as the second action, even if blocked.
+		if (turnRight)
+			TurnRight();
+		else
+			TurnLeft();
+	}
+
+	private void TurnLeft()
+	{
+		_facingDirection = new Vector2(
+			_facingDirection.Y,
+			-_facingDirection.X
+		);
+		SetFacingDirection(_facingDirection);
+	}
+
+	private void TurnRight()
+	{
+		_facingDirection = new Vector2(
+			-_facingDirection.Y,
+			_facingDirection.X
+		);
+		SetFacingDirection(_facingDirection);
 	}
 
 	private bool TryMoveForward(
@@ -173,6 +218,16 @@ public partial class Enemy : CharacterBody2D
 			case EnemyMovementType.Patroller:
 				sprite.Modulate = new Color(1.0f, 0.55f, 0.1f);
 				typeLabel = "PATROL";
+				break;
+
+			case EnemyMovementType.LeftTurner:
+				sprite.Modulate = new Color(0.2f, 0.85f, 0.35f);
+				typeLabel = "LEFT";
+				break;
+
+			case EnemyMovementType.RightTurner:
+				sprite.Modulate = new Color(1.0f, 0.3f, 0.65f);
+				typeLabel = "RIGHT";
 				break;
 
 			default:
