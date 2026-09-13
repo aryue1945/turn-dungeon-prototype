@@ -12,6 +12,8 @@ public partial class Main : Node2D
 	{
 		EnemyMovementType.SlowChaser,
 		EnemyMovementType.Patroller,
+		EnemyMovementType.LeftTurner,
+		EnemyMovementType.RightTurner,
 		EnemyMovementType.Stationary
 	};
 
