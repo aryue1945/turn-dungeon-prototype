@@ -49,6 +49,7 @@ public partial class Player : CharacterBody2D
 
 		if (direction != Vector2.Zero)
 		{
+			SetFacingDirection(direction);
 			EmitSignal(SignalName.MoveRequested, direction);
 			GetViewport().SetInputAsHandled();
 		}
@@ -57,7 +58,6 @@ public partial class Player : CharacterBody2D
 	public void Move(Vector2 direction)
 	{
 		Position += direction * TileSize;
-		SetFacingDirection(direction);
 	}
 
 	private void SetFacingDirection(Vector2 direction)

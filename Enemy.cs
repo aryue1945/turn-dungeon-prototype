@@ -5,6 +5,25 @@ public partial class Enemy : CharacterBody2D
 {
 	private const float TileSize = 32.0f;
 	private int _health = 2;
+	private Polygon2D _facingIndicator;
+
+	public override void _Ready()
+	{
+		_facingIndicator = new Polygon2D
+		{
+			Polygon = new Vector2[]
+			{
+				new(16, 0),
+				new(7, -5),
+				new(7, 5)
+			},
+			Color = Colors.Yellow,
+			ZIndex = 1
+		};
+
+		AddChild(_facingIndicator);
+		SetFacingDirection(Vector2.Down);
+	}
 
 	public void TakeDamage(int damage)
 	{
@@ -35,6 +54,8 @@ public partial class Enemy : CharacterBody2D
 		else
 			direction = new Vector2(0, Mathf.Sign(difference.Y));
 
+		SetFacingDirection(direction);
+
 		Vector2 nextPosition = Position + direction * TileSize;
 
 		if (nextPosition.IsEqualApprox(player.Position))
@@ -51,6 +72,11 @@ public partial class Enemy : CharacterBody2D
 		}
 
 		Position = nextPosition;
+	}
+
+	private void SetFacingDirection(Vector2 direction)
+	{
+		_facingIndicator.Rotation = direction.Angle();
 	}
 
 	private bool IsWallAt(Vector2 position)
