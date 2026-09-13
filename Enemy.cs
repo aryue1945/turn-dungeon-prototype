@@ -3,7 +3,6 @@ using System.Collections.Generic;
 
 public enum EnemyMovementType
 {
-	Chaser,
 	SlowChaser,
 	Patroller,
 	Stationary
@@ -63,11 +62,8 @@ public partial class Enemy : CharacterBody2D
 
 	public void PrepareNextMove(Vector2 playerPosition)
 	{
-		if (MovementType != EnemyMovementType.Chaser &&
-			MovementType != EnemyMovementType.SlowChaser)
-		{
+		if (MovementType != EnemyMovementType.SlowChaser)
 			return;
-		}
 
 		Vector2 difference = playerPosition - Position;
 
@@ -81,8 +77,7 @@ public partial class Enemy : CharacterBody2D
 
 		SetFacingDirection(_facingDirection);
 
-		if (MovementType == EnemyMovementType.SlowChaser)
-			_facingIndicator.Visible = true;
+		_facingIndicator.Visible = true;
 	}
 
 	public void TakeTurn(
@@ -91,11 +86,6 @@ public partial class Enemy : CharacterBody2D
 	{
 		switch (MovementType)
 		{
-			case EnemyMovementType.Chaser:
-				TryMoveForward(player, occupiedEnemyPositions);
-				PrepareNextMove(player.Position);
-				break;
-
 			case EnemyMovementType.SlowChaser:
 				TakeSlowChaserTurn(player, occupiedEnemyPositions);
 				break;
@@ -175,11 +165,6 @@ public partial class Enemy : CharacterBody2D
 
 		switch (MovementType)
 		{
-			case EnemyMovementType.Chaser:
-				sprite.Modulate = new Color(1.0f, 0.15f, 0.1f);
-				typeLabel = "CHASE";
-				break;
-
 			case EnemyMovementType.SlowChaser:
 				sprite.Modulate = new Color(0.2f, 0.55f, 1.0f);
 				typeLabel = "SLOW";
