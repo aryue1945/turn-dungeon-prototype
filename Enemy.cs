@@ -6,6 +6,7 @@ public partial class Enemy : CharacterBody2D
 	private const float TileSize = 32.0f;
 	private int _health = 2;
 	private Polygon2D _facingIndicator;
+	private Vector2 _facingDirection = Vector2.Down;
 
 	public override void _Ready()
 	{
@@ -37,41 +38,42 @@ public partial class Enemy : CharacterBody2D
 		}
 	}
 
-	public void TakeTurn(
-		Player player,
-		Vector2 chaseTargetPosition,
-		HashSet<Vector2> occupiedEnemyPositions)
+	public void PrepareNextMove(Vector2 playerPosition)
 	{
-		Vector2 difference = chaseTargetPosition - Position;
+		Vector2 difference = playerPosition - Position;
 
 		if (difference.IsZeroApprox())
 			return;
 
-		Vector2 direction;
-
 		if (Mathf.Abs(difference.X) > Mathf.Abs(difference.Y))
-			direction = new Vector2(Mathf.Sign(difference.X), 0);
+			_facingDirection = new Vector2(Mathf.Sign(difference.X), 0);
 		else
-			direction = new Vector2(0, Mathf.Sign(difference.Y));
+			_facingDirection = new Vector2(0, Mathf.Sign(difference.Y));
 
-		SetFacingDirection(direction);
+		SetFacingDirection(_facingDirection);
+	}
 
-		Vector2 nextPosition = Position + direction * TileSize;
+	public void TakeTurn(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions)
+	{
+		Vector2 nextPosition =
+			Position + _facingDirection * TileSize;
 
 		if (nextPosition.IsEqualApprox(player.Position))
 		{
 			GD.Print($"{Name} attacks player!");
 			player.TakeDamage(1);
-			return;
 		}
-
-		if (IsWallAt(nextPosition) ||
-			occupiedEnemyPositions.Contains(nextPosition))
+		else if (!IsWallAt(nextPosition) &&
+			!occupiedEnemyPositions.Contains(nextPosition))
 		{
-			return;
+			Position = nextPosition;
 		}
 
-		Position = nextPosition;
+		// The completed move used the old facing direction.
+		// Now telegraph the direction prepared for the next turn.
+		PrepareNextMove(player.Position);
 	}
 
 	private void SetFacingDirection(Vector2 direction)
