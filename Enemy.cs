@@ -1,12 +1,32 @@
 using Godot;
 using System.Collections.Generic;
 
+public enum EnemyMovementType
+{
+	Chaser,
+	SlowChaser,
+	Patroller,
+	Stationary
+}
+
 public partial class Enemy : CharacterBody2D
 {
 	private const float TileSize = 32.0f;
+
 	private int _health = 2;
 	private Polygon2D _facingIndicator;
 	private Vector2 _facingDirection = Vector2.Down;
+	private bool _slowChaserMovesThisTurn;
+
+	public EnemyMovementType MovementType { get; private set; }
+
+	public void Configure(EnemyMovementType movementType)
+	{
+		MovementType = movementType;
+
+		if (MovementType == EnemyMovementType.Patroller)
+			_facingDirection = Vector2.Right;
+	}
 
 	public override void _Ready()
 	{
@@ -19,11 +39,13 @@ public partial class Enemy : CharacterBody2D
 				new(7, 5)
 			},
 			Color = Colors.Yellow,
-			ZIndex = 1
+			ZIndex = 1,
+			Visible = MovementType != EnemyMovementType.Stationary
 		};
 
 		AddChild(_facingIndicator);
-		SetFacingDirection(Vector2.Down);
+		SetFacingDirection(_facingDirection);
+		ApplyTypeDisplay();
 	}
 
 	public void TakeDamage(int damage)
@@ -40,6 +62,12 @@ public partial class Enemy : CharacterBody2D
 
 	public void PrepareNextMove(Vector2 playerPosition)
 	{
+		if (MovementType != EnemyMovementType.Chaser &&
+			MovementType != EnemyMovementType.SlowChaser)
+		{
+			return;
+		}
+
 		Vector2 difference = playerPosition - Position;
 
 		if (difference.IsZeroApprox())
@@ -57,6 +85,58 @@ public partial class Enemy : CharacterBody2D
 		Player player,
 		HashSet<Vector2> occupiedEnemyPositions)
 	{
+		switch (MovementType)
+		{
+			case EnemyMovementType.Chaser:
+				TryMoveForward(player, occupiedEnemyPositions);
+				PrepareNextMove(player.Position);
+				break;
+
+			case EnemyMovementType.SlowChaser:
+				TakeSlowChaserTurn(player, occupiedEnemyPositions);
+				break;
+
+			case EnemyMovementType.Patroller:
+				TakePatrollerTurn(player, occupiedEnemyPositions);
+				break;
+
+			case EnemyMovementType.Stationary:
+				break;
+		}
+	}
+
+	private void TakeSlowChaserTurn(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions)
+	{
+		if (_slowChaserMovesThisTurn)
+			TryMoveForward(player, occupiedEnemyPositions);
+
+		_slowChaserMovesThisTurn = !_slowChaserMovesThisTurn;
+		PrepareNextMove(player.Position);
+	}
+
+	private void TakePatrollerTurn(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions)
+	{
+		bool completedAction =
+			TryMoveForward(player, occupiedEnemyPositions);
+
+		if (!completedAction)
+		{
+			_facingDirection = new Vector2(
+				-_facingDirection.Y,
+				_facingDirection.X
+			);
+			SetFacingDirection(_facingDirection);
+		}
+	}
+
+	private bool TryMoveForward(
+		Player player,
+		HashSet<Vector2> occupiedEnemyPositions)
+	{
 		Vector2 nextPosition =
 			Position + _facingDirection * TileSize;
 
@@ -64,16 +144,58 @@ public partial class Enemy : CharacterBody2D
 		{
 			GD.Print($"{Name} attacks player!");
 			player.TakeDamage(1);
-		}
-		else if (!IsWallAt(nextPosition) &&
-			!occupiedEnemyPositions.Contains(nextPosition))
-		{
-			Position = nextPosition;
+			return true;
 		}
 
-		// The completed move used the old facing direction.
-		// Now telegraph the direction prepared for the next turn.
-		PrepareNextMove(player.Position);
+		if (IsWallAt(nextPosition) ||
+			occupiedEnemyPositions.Contains(nextPosition))
+		{
+			return false;
+		}
+
+		Position = nextPosition;
+		return true;
+	}
+
+	private void ApplyTypeDisplay()
+	{
+		Sprite2D sprite = GetNode<Sprite2D>("Sprite2D");
+		string typeLabel;
+
+		switch (MovementType)
+		{
+			case EnemyMovementType.Chaser:
+				sprite.Modulate = new Color(1.0f, 0.15f, 0.1f);
+				typeLabel = "CHASE";
+				break;
+
+			case EnemyMovementType.SlowChaser:
+				sprite.Modulate = new Color(0.2f, 0.55f, 1.0f);
+				typeLabel = "SLOW";
+				break;
+
+			case EnemyMovementType.Patroller:
+				sprite.Modulate = new Color(1.0f, 0.55f, 0.1f);
+				typeLabel = "PATROL";
+				break;
+
+			default:
+				sprite.Modulate = new Color(0.65f, 0.35f, 0.9f);
+				typeLabel = "STILL";
+				break;
+		}
+
+		Label label = new()
+		{
+			Position = new Vector2(-28, 17),
+			Size = new Vector2(56, 18),
+			Text = typeLabel,
+			HorizontalAlignment = Godot.HorizontalAlignment.Center,
+			ZIndex = 2
+		};
+		label.AddThemeFontSizeOverride("font_size", 10);
+		label.AddThemeColorOverride("font_color", Colors.White);
+		AddChild(label);
 	}
 
 	private void SetFacingDirection(Vector2 direction)
