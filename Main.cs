@@ -10,7 +10,6 @@ public partial class Main : Node2D
 	private static readonly Vector2 RoomOrigin = new(64, 64);
 	private static readonly EnemyMovementType[] EnemyTypes =
 	{
-		EnemyMovementType.Chaser,
 		EnemyMovementType.SlowChaser,
 		EnemyMovementType.Patroller,
 		EnemyMovementType.Stationary
@@ -113,9 +112,6 @@ public partial class Main : Node2D
 			occupiedPositions.Add(enemyPosition);
 			_enemies.Add(enemy);
 			AddChild(enemy);
-
-			if (movementType == EnemyMovementType.Chaser)
-				enemy.PrepareNextMove(_player.Position);
 		}
 	}
 
