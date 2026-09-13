@@ -20,9 +20,10 @@ public partial class Enemy : CharacterBody2D
 
 	public void TakeTurn(
 		Player player,
+		Vector2 chaseTargetPosition,
 		HashSet<Vector2> occupiedEnemyPositions)
 	{
-		Vector2 difference = player.Position - Position;
+		Vector2 difference = chaseTargetPosition - Position;
 
 		if (difference.IsZeroApprox())
 			return;

@@ -198,7 +198,9 @@ public partial class Main : Node2D
 		return occupiedPositions;
 	}
 
-	private void TakeEnemyTurns(Enemy attackedEnemy)
+	private void TakeEnemyTurns(
+		Enemy attackedEnemy,
+		Vector2 chaseTargetPosition)
 	{
 		foreach (Enemy enemy in _enemies)
 		{
@@ -208,7 +210,11 @@ public partial class Main : Node2D
 			HashSet<Vector2> occupiedPositions =
 				GetOccupiedEnemyPositions(enemy);
 
-			enemy.TakeTurn(_player, occupiedPositions);
+			enemy.TakeTurn(
+				_player,
+				chaseTargetPosition,
+				occupiedPositions
+			);
 
 			if (_player.Health <= 0)
 				break;
@@ -220,8 +226,9 @@ public partial class Main : Node2D
 		if (_gameEnded)
 			return;
 
+		Vector2 previousPlayerPosition = _player.Position;
 		Vector2 targetPosition =
-			_player.Position + direction * TileSize;
+			previousPlayerPosition + direction * TileSize;
 
 		Enemy attackedEnemy = FindEnemyAt(targetPosition);
 
@@ -244,7 +251,7 @@ public partial class Main : Node2D
 		if (_gameEnded)
 			return;
 
-		TakeEnemyTurns(attackedEnemy);
+		TakeEnemyTurns(attackedEnemy, previousPlayerPosition);
 
 		RemoveDefeatedEnemies();
 		CheckForVictory();
