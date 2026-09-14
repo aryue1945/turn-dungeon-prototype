@@ -24,7 +24,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 
 	private int _health = MaxHealth;
 	private Polygon2D _facingIndicator;
-	private Polygon2D _healthBarFill;
+	private Label _healthLabel;
 	private Vector2 _facingDirection = Vector2.Down;
 	private bool _slowChaserHasPreparedMove;
 
@@ -63,7 +63,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		AddChild(_facingIndicator);
 		SetFacingDirection(_facingDirection);
 		ApplyTypeDisplay();
-		CreateHealthBar();
+		CreateHealthDisplay();
 	}
 
 	public void TakeDamage(int damage)
@@ -73,7 +73,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		if (_health < 0)
 			_health = 0;
 
-		UpdateHealthBar();
+		UpdateHealthDisplay();
 		GD.Print($"{Name} health: {_health}/{MaxHealth}");
 
 		if (_health <= 0)
@@ -304,45 +304,29 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		};
 	}
 
-	private void CreateHealthBar()
+	private void CreateHealthDisplay()
 	{
-		Polygon2D background = new()
+		_healthLabel = new Label
 		{
-			Position = new Vector2(0, -38),
-			Polygon = new Vector2[]
-			{
-				new(-16, 0),
-				new(16, 0),
-				new(16, 5),
-				new(-16, 5)
-			},
-			Color = new Color(0.08f, 0.08f, 0.08f, 0.9f),
-			ZIndex = 3
-		};
-		AddChild(background);
-
-		_healthBarFill = new Polygon2D
-		{
-			Position = new Vector2(0, -38),
-			Color = new Color(0.2f, 0.9f, 0.25f),
+			Position = new Vector2(-20, -46),
+			Size = new Vector2(40, 16),
+			HorizontalAlignment = HorizontalAlignment.Center,
+			VerticalAlignment = VerticalAlignment.Center,
 			ZIndex = 4
 		};
-		AddChild(_healthBarFill);
-		UpdateHealthBar();
+
+		_healthLabel.AddThemeFontSizeOverride("font_size", 10);
+		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
+		_healthLabel.AddThemeColorOverride("font_outline_color", Colors.Black);
+		_healthLabel.AddThemeConstantOverride("outline_size", 2);
+
+		AddChild(_healthLabel);
+		UpdateHealthDisplay();
 	}
 
-	private void UpdateHealthBar()
+	private void UpdateHealthDisplay()
 	{
-		float ratio = (float)_health / MaxHealth;
-		float rightEdge = -15 + 30 * ratio;
-
-		_healthBarFill.Polygon = new Vector2[]
-		{
-			new(-15, 1),
-			new(rightEdge, 1),
-			new(rightEdge, 4),
-			new(-15, 4)
-		};
+		_healthLabel.Text = $"{_health}/{MaxHealth}";
 	}
 
 	private void SetFacingDirection(Vector2 direction)
