@@ -4,48 +4,50 @@ using System.Linq;
 
 public sealed class DungeonGenerator
 {
+	private static readonly GridPosition[] LayoutDirections =
+	{
+		new(1, 0),
+		new(-1, 0),
+		new(0, 1),
+		new(0, -1)
+	};
+
 	public DungeonMap Generate(DungeonGenerationRequest request)
 	{
 		Validate(request);
 
 		Random random = new(request.Seed);
 		DungeonMap map = new(request.Width, request.Height, request.Seed);
-		InitializeBuilding(map);
+		int templateSize = ZoneTemplateCatalog.TemplateSize;
+		int templatePitch = templateSize - 1;
+		int layoutColumns = (request.Width - 1) / templatePitch;
+		int layoutRows = (request.Height - 1) / templatePitch;
+		int layoutWidth = layoutColumns * templatePitch + 1;
+		int layoutHeight = layoutRows * templatePitch + 1;
+		GridPosition layoutOrigin = new(
+			(request.Width - layoutWidth) / 2,
+			(request.Height - layoutHeight) / 2
+		);
 
-		List<DungeonRoom> rooms = new()
-		{
-			new DungeonRoom(
-				1,
-				1,
-				request.Width - 2,
-				request.Height - 2
-			)
-		};
+		List<GridPosition> layoutPositions = PlaceConnectedZones(
+			layoutColumns,
+			layoutRows,
+			request.TargetZoneCount,
+			random
+		);
+		List<DungeonZone> zones = CreateZones(
+			layoutPositions,
+			layoutOrigin,
+			templatePitch
+		);
 
-		while (rooms.Count < request.TargetRoomCount)
-		{
-			List<DungeonRoom> candidates = rooms
-				.Where(room => CanSplit(room, request))
-				.OrderByDescending(room => room.Area)
-				.ToList();
+		ConnectAdjacentZones(zones);
+		AssignZoneTypes(zones, random);
+		RenderTemplatesIntoMap(map, zones, random);
+		CreateSharedWallsAndDoors(map, zones, templateSize);
 
-			if (candidates.Count == 0)
-				break;
-
-			int candidatePoolSize = Math.Min(3, candidates.Count);
-			DungeonRoom room = candidates[random.Next(candidatePoolSize)];
-			int roomIndex = rooms.IndexOf(room);
-
-			(DungeonRoom first, DungeonRoom second) =
-				SplitRoom(map, room, request, random);
-
-			rooms[roomIndex] = first;
-			rooms.Add(second);
-		}
-
-		AssignZones(map, rooms);
-		ConnectEveryAdjacentRoomPair(map, rooms, random);
-		map.SetRooms(rooms.AsReadOnly());
+		map.SetRooms(zones.Select(zone => zone.Room).ToList().AsReadOnly());
+		map.SetZones(zones.AsReadOnly());
 		return map;
 	}
 
@@ -54,251 +56,337 @@ public sealed class DungeonGenerator
 		if (request == null)
 			throw new ArgumentNullException(nameof(request));
 
-		if (request.MinimumRoomWidth < 2)
-			throw new ArgumentOutOfRangeException(
-				nameof(request.MinimumRoomWidth)
-			);
+		int size = ZoneTemplateCatalog.TemplateSize;
+		int pitch = size - 1;
 
-		if (request.MinimumRoomHeight < 2)
-			throw new ArgumentOutOfRangeException(
-				nameof(request.MinimumRoomHeight)
-			);
-
-		if (request.Width < request.MinimumRoomWidth * 2 + 3)
+		if (request.Width < size)
 			throw new ArgumentOutOfRangeException(nameof(request.Width));
 
-		if (request.Height < request.MinimumRoomHeight * 2 + 3)
+		if (request.Height < size)
 			throw new ArgumentOutOfRangeException(nameof(request.Height));
 
-		if (request.TargetRoomCount < 1)
+		if (request.TargetZoneCount < 1)
 			throw new ArgumentOutOfRangeException(
-				nameof(request.TargetRoomCount)
+				nameof(request.TargetZoneCount)
 			);
+
+		int columns = (request.Width - 1) / pitch;
+		int rows = (request.Height - 1) / pitch;
+
+		if (request.TargetZoneCount > columns * rows)
+		{
+			throw new ArgumentOutOfRangeException(
+				nameof(request.TargetZoneCount),
+				"The requested map is too small for that many zones."
+			);
+		}
 	}
 
-	private static void InitializeBuilding(DungeonMap map)
+	private static List<GridPosition> PlaceConnectedZones(
+		int columns,
+		int rows,
+		int zoneCount,
+		Random random)
 	{
-		for (int y = 0; y < map.Height; y++)
-		{
-			for (int x = 0; x < map.Width; x++)
-			{
-				bool isBoundary = x == 0 || y == 0 ||
-					x == map.Width - 1 || y == map.Height - 1;
+		GridPosition start = new(columns / 2, rows / 2);
+		List<GridPosition> placed = new() { start };
+		HashSet<GridPosition> occupied = new() { start };
 
-				map.SetTerrain(
-					x,
-					y,
-					isBoundary ? TerrainKind.SolidWall : TerrainKind.Floor
+		while (placed.Count < zoneCount)
+		{
+			HashSet<GridPosition> candidates = new();
+
+			foreach (GridPosition position in placed)
+			{
+				foreach (GridPosition direction in LayoutDirections)
+				{
+					GridPosition candidate = new(
+						position.X + direction.X,
+						position.Y + direction.Y
+					);
+
+					if (candidate.X < 0 || candidate.X >= columns ||
+						candidate.Y < 0 || candidate.Y >= rows ||
+						occupied.Contains(candidate))
+					{
+						continue;
+					}
+
+					candidates.Add(candidate);
+				}
+			}
+
+			if (candidates.Count == 0)
+				throw new InvalidOperationException("Zone placement became stuck.");
+
+			List<GridPosition> orderedCandidates = candidates
+				.OrderBy(position => position.Y)
+				.ThenBy(position => position.X)
+				.ToList();
+			GridPosition next = orderedCandidates[
+				random.Next(orderedCandidates.Count)
+			];
+			placed.Add(next);
+			occupied.Add(next);
+		}
+
+		return placed;
+	}
+
+	private static List<DungeonZone> CreateZones(
+		IReadOnlyList<GridPosition> layoutPositions,
+		GridPosition layoutOrigin,
+		int templatePitch)
+	{
+		List<DungeonZone> zones = new();
+
+		for (int zoneId = 0; zoneId < layoutPositions.Count; zoneId++)
+		{
+			GridPosition layoutPosition = layoutPositions[zoneId];
+			GridPosition templateOrigin = new(
+				layoutOrigin.X + layoutPosition.X * templatePitch,
+				layoutOrigin.Y + layoutPosition.Y * templatePitch
+			);
+			DungeonRoom room = new(
+				templateOrigin.X + 1,
+				templateOrigin.Y + 1,
+				ZoneTemplateCatalog.TemplateSize - 2,
+				ZoneTemplateCatalog.TemplateSize - 2
+			)
+			{
+				ZoneId = zoneId
+			};
+
+			zones.Add(
+				new DungeonZone(
+					zoneId,
+					room,
+					layoutPosition,
+					templateOrigin
+				)
+			);
+		}
+
+		return zones;
+	}
+
+	private static void ConnectAdjacentZones(IReadOnlyList<DungeonZone> zones)
+	{
+		for (int first = 0; first < zones.Count; first++)
+		{
+			for (int second = first + 1; second < zones.Count; second++)
+			{
+				DungeonZone firstZone = zones[first];
+				DungeonZone secondZone = zones[second];
+				int distance = Math.Abs(
+					firstZone.LayoutPosition.X - secondZone.LayoutPosition.X
+				) + Math.Abs(
+					firstZone.LayoutPosition.Y - secondZone.LayoutPosition.Y
 				);
+
+				if (distance != 1)
+					continue;
+
+				firstZone.ConnectTo(secondZone.Id);
+				secondZone.ConnectTo(firstZone.Id);
 			}
 		}
 	}
 
-	private static bool CanSplit(
-		DungeonRoom room,
-		DungeonGenerationRequest request)
-	{
-		return CanSplitVertically(room, request) ||
-			CanSplitHorizontally(room, request);
-	}
-
-	private static bool CanSplitVertically(
-		DungeonRoom room,
-		DungeonGenerationRequest request)
-	{
-		return room.Width >= request.MinimumRoomWidth * 2 + 1;
-	}
-
-	private static bool CanSplitHorizontally(
-		DungeonRoom room,
-		DungeonGenerationRequest request)
-	{
-		return room.Height >= request.MinimumRoomHeight * 2 + 1;
-	}
-
-	private static (DungeonRoom First, DungeonRoom Second) SplitRoom(
-		DungeonMap map,
-		DungeonRoom room,
-		DungeonGenerationRequest request,
+	private static void AssignZoneTypes(
+		IReadOnlyList<DungeonZone> zones,
 		Random random)
 	{
-		bool canSplitVertically = CanSplitVertically(room, request);
-		bool canSplitHorizontally = CanSplitHorizontally(room, request);
-		bool splitVertically;
+		foreach (DungeonZone zone in zones)
+			zone.Type = DungeonZoneType.Combat;
 
-		if (!canSplitHorizontally)
-			splitVertically = true;
-		else if (!canSplitVertically)
-			splitVertically = false;
-		else if (room.Width > room.Height * 1.25f)
-			splitVertically = true;
-		else if (room.Height > room.Width * 1.25f)
-			splitVertically = false;
-		else
-			splitVertically = random.Next(2) == 0;
+		DungeonZone start = zones[0];
+		start.Type = DungeonZoneType.Start;
 
-		return splitVertically
-			? SplitVertically(map, room, request, random)
-			: SplitHorizontally(map, room, request, random);
-	}
+		if (zones.Count == 1)
+			return;
 
-	private static (DungeonRoom, DungeonRoom) SplitVertically(
-		DungeonMap map,
-		DungeonRoom room,
-		DungeonGenerationRequest request,
-		Random random)
-	{
-		int wallOffset = random.Next(
-			request.MinimumRoomWidth,
-			room.Width - request.MinimumRoomWidth
-		);
-		int wallX = room.X + wallOffset;
+		Dictionary<int, int> distances = GetZoneDistances(zones, start.Id);
+		DungeonZone exit = zones
+			.Where(zone => zone.Id != start.Id)
+			.OrderByDescending(zone => distances[zone.Id])
+			.ThenBy(zone => zone.Id)
+			.First();
+		exit.Type = DungeonZoneType.Exit;
 
-		for (int y = room.Y; y < room.Bottom; y++)
-			map.SetTerrain(wallX, y, TerrainKind.BreakableWall);
+		List<DungeonZone> shopCandidates = zones
+			.Where(zone =>
+				zone.Id != start.Id &&
+				zone.Id != exit.Id)
+			.ToList();
 
-		return (
-			new DungeonRoom(room.X, room.Y, wallOffset, room.Height),
-			new DungeonRoom(
-				wallX + 1,
-				room.Y,
-				room.Width - wallOffset - 1,
-				room.Height
-			)
-		);
-	}
-
-	private static (DungeonRoom, DungeonRoom) SplitHorizontally(
-		DungeonMap map,
-		DungeonRoom room,
-		DungeonGenerationRequest request,
-		Random random)
-	{
-		int wallOffset = random.Next(
-			request.MinimumRoomHeight,
-			room.Height - request.MinimumRoomHeight
-		);
-		int wallY = room.Y + wallOffset;
-
-		for (int x = room.X; x < room.Right; x++)
-			map.SetTerrain(x, wallY, TerrainKind.BreakableWall);
-
-		return (
-			new DungeonRoom(room.X, room.Y, room.Width, wallOffset),
-			new DungeonRoom(
-				room.X,
-				wallY + 1,
-				room.Width,
-				room.Height - wallOffset - 1
-			)
-		);
-	}
-
-	private static void AssignZones(
-		DungeonMap map,
-		IReadOnlyList<DungeonRoom> rooms)
-	{
-		for (int zoneId = 0; zoneId < rooms.Count; zoneId++)
+		if (shopCandidates.Count > 0)
 		{
-			DungeonRoom room = rooms[zoneId];
-			room.ZoneId = zoneId;
+			DungeonZone shop = shopCandidates[random.Next(shopCandidates.Count)];
+			shop.Type = DungeonZoneType.Shop;
+		}
+	}
 
-			for (int y = room.Y; y < room.Bottom; y++)
+	private static Dictionary<int, int> GetZoneDistances(
+		IReadOnlyList<DungeonZone> zones,
+		int startZoneId)
+	{
+		Dictionary<int, int> distances = new()
+		{
+			[startZoneId] = 0
+		};
+		Queue<int> remaining = new();
+		remaining.Enqueue(startZoneId);
+
+		while (remaining.Count > 0)
+		{
+			int currentId = remaining.Dequeue();
+
+			foreach (int nextId in zones[currentId].ConnectedZoneIds)
 			{
-				for (int x = room.X; x < room.Right; x++)
-					map.SetZone(x, y, zoneId);
+				if (distances.ContainsKey(nextId))
+					continue;
+
+				distances[nextId] = distances[currentId] + 1;
+				remaining.Enqueue(nextId);
+			}
+		}
+
+		return distances;
+	}
+
+	private static void RenderTemplatesIntoMap(
+		DungeonMap map,
+		IReadOnlyList<DungeonZone> zones,
+		Random random)
+	{
+		foreach (DungeonZone zone in zones)
+		{
+			IReadOnlyList<ZoneTemplate> templates =
+				ZoneTemplateCatalog.GetFor(zone.Type);
+			ZoneTemplate template = templates[random.Next(templates.Count)];
+			int rotation = random.Next(4);
+			bool mirrored = random.Next(2) == 1;
+
+			zone.TemplateName = template.Name;
+			zone.TemplateRotation = rotation;
+			zone.TemplateMirrored = mirrored;
+
+			for (int templateY = 0; templateY < template.Size; templateY++)
+			{
+				for (int templateX = 0; templateX < template.Size; templateX++)
+				{
+					int mapX = zone.TemplateOrigin.X + templateX;
+					int mapY = zone.TemplateOrigin.Y + templateY;
+					bool isBoundary = templateX == 0 || templateY == 0 ||
+						templateX == template.Size - 1 ||
+						templateY == template.Size - 1;
+
+					if (isBoundary)
+					{
+						map.SetTerrain(mapX, mapY, TerrainKind.SolidWall);
+						continue;
+					}
+
+					char symbol = template.GetSymbol(
+						templateX,
+						templateY,
+						rotation,
+						mirrored
+					);
+					TerrainKind terrain = symbol ==
+						ZoneTemplate.BreakableWallSymbol
+						? TerrainKind.BreakableWall
+						: TerrainKind.Floor;
+
+					map.SetTerrain(mapX, mapY, terrain);
+					map.SetZone(mapX, mapY, zone.Id);
+				}
 			}
 		}
 	}
 
-	private static void ConnectEveryAdjacentRoomPair(
+	private static void CreateSharedWallsAndDoors(
 		DungeonMap map,
-		IReadOnlyList<DungeonRoom> rooms,
-		Random random)
+		IReadOnlyList<DungeonZone> zones,
+		int templateSize)
 	{
-		for (int firstIndex = 0; firstIndex < rooms.Count; firstIndex++)
+		for (int first = 0; first < zones.Count; first++)
 		{
-			for (
-				int secondIndex = firstIndex + 1;
-				secondIndex < rooms.Count;
-				secondIndex++
-			)
+			DungeonZone firstZone = zones[first];
+
+			foreach (int secondId in firstZone.ConnectedZoneIds)
 			{
-				TryCreateSharedWallDoor(
+				if (secondId <= firstZone.Id)
+					continue;
+
+				DungeonZone secondZone = zones[secondId];
+				CreateSharedWallAndDoor(
 					map,
-					rooms[firstIndex],
-					rooms[secondIndex],
-					random
+					firstZone,
+					secondZone,
+					templateSize
 				);
 			}
 		}
 	}
 
-	private static void TryCreateSharedWallDoor(
+	private static void CreateSharedWallAndDoor(
 		DungeonMap map,
-		DungeonRoom first,
-		DungeonRoom second,
-		Random random)
+		DungeonZone first,
+		DungeonZone second,
+		int templateSize)
 	{
-		DungeonRoom left = first.X < second.X ? first : second;
-		DungeonRoom right = left == first ? second : first;
+		int center = templateSize / 2;
+		bool horizontalNeighbors =
+			first.LayoutPosition.Y == second.LayoutPosition.Y;
 
-		if (left.Right + 1 == right.X)
+		if (horizontalNeighbors)
 		{
-			int overlapStart = Math.Max(left.Y, right.Y);
-			int overlapEnd = Math.Min(left.Bottom, right.Bottom);
+			DungeonZone left = first.LayoutPosition.X < second.LayoutPosition.X
+				? first
+				: second;
+			DungeonZone right = ReferenceEquals(left, first) ? second : first;
+			int wallX = left.TemplateOrigin.X + templateSize - 1;
 
-			if (overlapEnd > overlapStart)
+			for (int offset = 1; offset < templateSize - 1; offset++)
 			{
-				int doorY = ChooseDoorCoordinate(
-					overlapStart,
-					overlapEnd,
-					random
+				map.SetTerrain(
+					wallX,
+					left.TemplateOrigin.Y + offset,
+					TerrainKind.BreakableWall
 				);
-				map.SetDoor(
-					left.Right,
-					doorY,
-					left.ZoneId,
-					right.ZoneId
-				);
-				return;
 			}
+
+			map.SetDoor(
+				wallX,
+				left.TemplateOrigin.Y + center,
+				left.Id,
+				right.Id
+			);
+			return;
 		}
 
-		DungeonRoom top = first.Y < second.Y ? first : second;
-		DungeonRoom bottom = top == first ? second : first;
+		DungeonZone top = first.LayoutPosition.Y < second.LayoutPosition.Y
+			? first
+			: second;
+		DungeonZone bottom = ReferenceEquals(top, first) ? second : first;
+		int wallY = top.TemplateOrigin.Y + templateSize - 1;
 
-		if (top.Bottom + 1 != bottom.Y)
-			return;
+		for (int offset = 1; offset < templateSize - 1; offset++)
+		{
+			map.SetTerrain(
+				top.TemplateOrigin.X + offset,
+				wallY,
+				TerrainKind.BreakableWall
+			);
+		}
 
-		int horizontalOverlapStart = Math.Max(top.X, bottom.X);
-		int horizontalOverlapEnd = Math.Min(top.Right, bottom.Right);
-
-		if (horizontalOverlapEnd <= horizontalOverlapStart)
-			return;
-
-		int doorX = ChooseDoorCoordinate(
-			horizontalOverlapStart,
-			horizontalOverlapEnd,
-			random
-		);
 		map.SetDoor(
-			doorX,
-			top.Bottom,
-			top.ZoneId,
-			bottom.ZoneId
+			top.TemplateOrigin.X + center,
+			wallY,
+			top.Id,
+			bottom.Id
 		);
-	}
-
-	private static int ChooseDoorCoordinate(
-		int overlapStart,
-		int overlapEnd,
-		Random random)
-	{
-		int length = overlapEnd - overlapStart;
-
-		return length > 2
-			? random.Next(overlapStart + 1, overlapEnd - 1)
-			: random.Next(overlapStart, overlapEnd);
 	}
 }
