@@ -490,7 +490,7 @@ public partial class Main : Node2D
 
 		PanelContainer selectionPanel = new()
 		{
-			CustomMinimumSize = new Vector2(280, 220)
+			CustomMinimumSize = new Vector2(280, 250)
 		};
 		selectionCenter.AddChild(selectionPanel);
 		_weaponSelectionPanel = selectionRoot;
@@ -531,7 +531,25 @@ public partial class Main : Node2D
 		longSwordButton.Pressed += OnLongSwordSelected;
 		selectionBox.AddChild(longSwordButton);
 
+		Label keyboardHint = new()
+		{
+			Text = "Up/Down, then Enter or Space",
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		keyboardHint.AddThemeFontSizeOverride("font_size", 14);
+		selectionBox.AddChild(keyboardHint);
+
+		basicSwordButton.FocusNeighborTop =
+			basicSwordButton.GetPathTo(longSwordButton);
+		basicSwordButton.FocusNeighborBottom =
+			basicSwordButton.GetPathTo(longSwordButton);
+		longSwordButton.FocusNeighborTop =
+			longSwordButton.GetPathTo(basicSwordButton);
+		longSwordButton.FocusNeighborBottom =
+			longSwordButton.GetPathTo(basicSwordButton);
+
 		_player.SetProcessUnhandledInput(false);
+		basicSwordButton.GrabFocus();
 	}
 
 	private bool IsWallAt(Vector2 position)
