@@ -88,7 +88,7 @@ public sealed class DungeonGenerator
 				map.SetTerrain(
 					x,
 					y,
-					isBoundary ? DungeonTerrain.Wall : DungeonTerrain.Floor
+					isBoundary ? TerrainKind.SolidWall : TerrainKind.Floor
 				);
 			}
 		}
@@ -155,7 +155,7 @@ public sealed class DungeonGenerator
 		int wallX = room.X + wallOffset;
 
 		for (int y = room.Y; y < room.Bottom; y++)
-			map.SetTerrain(wallX, y, DungeonTerrain.Wall);
+			map.SetTerrain(wallX, y, TerrainKind.BreakableWall);
 
 		return (
 			new DungeonRoom(room.X, room.Y, wallOffset, room.Height),
@@ -181,7 +181,7 @@ public sealed class DungeonGenerator
 		int wallY = room.Y + wallOffset;
 
 		for (int x = room.X; x < room.Right; x++)
-			map.SetTerrain(x, wallY, DungeonTerrain.Wall);
+			map.SetTerrain(x, wallY, TerrainKind.BreakableWall);
 
 		return (
 			new DungeonRoom(room.X, room.Y, room.Width, wallOffset),
