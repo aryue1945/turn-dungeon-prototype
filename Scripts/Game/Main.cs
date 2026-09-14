@@ -8,6 +8,9 @@ public partial class Main : Node2D
 	private const int MapWidth = 48;
 	private const int MapHeight = 32;
 	private const int TargetRoomCount = 10;
+	private const float MinimumCameraZoom = 0.5f;
+	private const float MaximumCameraZoom = 2.0f;
+	private const float CameraZoomStep = 0.25f;
 
 	private static readonly Vector2 MapOrigin = Vector2.Zero;
 	private static readonly EnemyMovementType[] EnemyTypes =
@@ -45,6 +48,7 @@ public partial class Main : Node2D
 	private DungeonMap _dungeonMap;
 	private int _dungeonSeed;
 	private int _currentPlayerZoneId = -1;
+	private Camera2D _camera;
 
 	public override void _Ready()
 	{
@@ -94,6 +98,49 @@ public partial class Main : Node2D
 		GD.Print($"Spawned {_enemies.Count} enemies.");
 	}
 
+	public override void _UnhandledInput(InputEvent @event)
+	{
+		if (@event is InputEventMouseButton mouseButton &&
+			mouseButton.Pressed)
+		{
+			if (mouseButton.ButtonIndex == MouseButton.WheelDown)
+				AdjustCameraZoom(-CameraZoomStep);
+			else if (mouseButton.ButtonIndex == MouseButton.WheelUp)
+				AdjustCameraZoom(CameraZoomStep);
+			else
+				return;
+
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
+		if (@event is not InputEventKey keyEvent ||
+			!keyEvent.Pressed ||
+			keyEvent.Echo)
+		{
+			return;
+		}
+
+		switch (keyEvent.Keycode)
+		{
+			case Key.Minus:
+			case Key.KpSubtract:
+				AdjustCameraZoom(-CameraZoomStep);
+				break;
+			case Key.Equal:
+			case Key.KpAdd:
+				AdjustCameraZoom(CameraZoomStep);
+				break;
+			case Key.Key0:
+				SetCameraZoom(1.0f);
+				break;
+			default:
+				return;
+		}
+
+		GetViewport().SetInputAsHandled();
+	}
+
 	private Vector2 CellToPosition(GridPosition cell)
 	{
 		return MapOrigin + new Vector2(
@@ -123,6 +170,7 @@ public partial class Main : Node2D
 			seed: _dungeonSeed
 		);
 		_dungeonMap = new DungeonGenerator().Generate(request);
+		GD.Print(_dungeonMap.ToDebugString());
 
 		DungeonRenderer renderer = new(
 			this,
@@ -182,7 +230,7 @@ public partial class Main : Node2D
 
 	private void CreateFollowingCamera()
 	{
-		Camera2D camera = new()
+		_camera = new Camera2D
 		{
 			Position = Vector2.Zero,
 			PositionSmoothingEnabled = true,
@@ -197,8 +245,24 @@ public partial class Main : Node2D
 			)
 		};
 
-		_player.AddChild(camera);
-		camera.MakeCurrent();
+		_player.AddChild(_camera);
+		_camera.MakeCurrent();
+	}
+
+	private void AdjustCameraZoom(float amount)
+	{
+		SetCameraZoom(_camera.Zoom.X + amount);
+	}
+
+	private void SetCameraZoom(float zoom)
+	{
+		float clampedZoom = Mathf.Clamp(
+			zoom,
+			MinimumCameraZoom,
+			MaximumCameraZoom
+		);
+		_camera.Zoom = Vector2.One * clampedZoom;
+		GD.Print($"Camera zoom: {clampedZoom:0.00}x");
 	}
 
 	private void SpawnEnemies()
