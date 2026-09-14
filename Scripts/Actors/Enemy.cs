@@ -24,7 +24,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 
 	private int _health = MaxHealth;
 	private Polygon2D _facingIndicator;
-	private ProgressBar _healthBar;
+	private Label _healthLabel;
 	private Vector2 _facingDirection = Vector2.Down;
 	private bool _slowChaserHasPreparedMove;
 
@@ -63,7 +63,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		AddChild(_facingIndicator);
 		SetFacingDirection(_facingDirection);
 		ApplyTypeDisplay();
-		CreateHealthBar();
+		CreateHealthDisplay();
 	}
 
 	public void TakeDamage(int damage)
@@ -73,7 +73,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		if (_health < 0)
 			_health = 0;
 
-		_healthBar.Value = _health;
+		UpdateHealthDisplay();
 		GD.Print($"{Name} health: {_health}/{MaxHealth}");
 
 		if (_health <= 0)
@@ -263,35 +263,17 @@ public partial class Enemy : CharacterBody2D, ICombatant
 	private void ApplyTypeDisplay()
 	{
 		Sprite2D sprite = GetNode<Sprite2D>("Sprite2D");
-		string typeLabel;
+		sprite.Texture = GD.Load<Texture2D>(GetTypeTexturePath());
+		sprite.Modulate = Colors.White;
 
-		switch (MovementType)
+		string typeLabel = MovementType switch
 		{
-			case EnemyMovementType.SlowChaser:
-				sprite.Modulate = new Color(0.2f, 0.55f, 1.0f);
-				typeLabel = "SLOW";
-				break;
-
-			case EnemyMovementType.Patroller:
-				sprite.Modulate = new Color(1.0f, 0.55f, 0.1f);
-				typeLabel = "PATROL";
-				break;
-
-			case EnemyMovementType.LeftTurner:
-				sprite.Modulate = new Color(0.2f, 0.85f, 0.35f);
-				typeLabel = "LEFT";
-				break;
-
-			case EnemyMovementType.RightTurner:
-				sprite.Modulate = new Color(1.0f, 0.3f, 0.65f);
-				typeLabel = "RIGHT";
-				break;
-
-			default:
-				sprite.Modulate = new Color(0.65f, 0.35f, 0.9f);
-				typeLabel = "STILL";
-				break;
-		}
+			EnemyMovementType.SlowChaser => "SLOW",
+			EnemyMovementType.Patroller => "PATROL",
+			EnemyMovementType.LeftTurner => "LEFT",
+			EnemyMovementType.RightTurner => "RIGHT",
+			_ => "STILL"
+		};
 
 		Label label = new()
 		{
@@ -306,33 +288,45 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		AddChild(label);
 	}
 
-	private void CreateHealthBar()
+	private string GetTypeTexturePath()
 	{
-		_healthBar = new ProgressBar
+		return MovementType switch
 		{
-			Position = new Vector2(-16, -26),
-			Size = new Vector2(32, 7),
-			MinValue = 0,
-			MaxValue = MaxHealth,
-			Value = _health,
-			ShowPercentage = false,
-			MouseFilter = Control.MouseFilterEnum.Ignore,
-			ZIndex = 3
+			EnemyMovementType.SlowChaser =>
+				"res://Art/Actors/enemy_slow_chaser.png",
+			EnemyMovementType.Patroller =>
+				"res://Art/Actors/enemy_patroller.png",
+			EnemyMovementType.LeftTurner =>
+				"res://Art/Actors/enemy_left_turner.png",
+			EnemyMovementType.RightTurner =>
+				"res://Art/Actors/enemy_right_turner.png",
+			_ => "res://Art/Actors/enemy_stationary.png"
+		};
+	}
+
+	private void CreateHealthDisplay()
+	{
+		_healthLabel = new Label
+		{
+			Position = new Vector2(-20, -46),
+			Size = new Vector2(40, 16),
+			HorizontalAlignment = HorizontalAlignment.Center,
+			VerticalAlignment = VerticalAlignment.Center,
+			ZIndex = 4
 		};
 
-		StyleBoxFlat backgroundStyle = new()
-		{
-			BgColor = new Color(0.12f, 0.12f, 0.12f)
-		};
+		_healthLabel.AddThemeFontSizeOverride("font_size", 10);
+		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
+		_healthLabel.AddThemeColorOverride("font_outline_color", Colors.Black);
+		_healthLabel.AddThemeConstantOverride("outline_size", 2);
 
-		StyleBoxFlat fillStyle = new()
-		{
-			BgColor = new Color(0.2f, 0.9f, 0.25f)
-		};
+		AddChild(_healthLabel);
+		UpdateHealthDisplay();
+	}
 
-		_healthBar.AddThemeStyleboxOverride("background", backgroundStyle);
-		_healthBar.AddThemeStyleboxOverride("fill", fillStyle);
-		AddChild(_healthBar);
+	private void UpdateHealthDisplay()
+	{
+		_healthLabel.Text = $"{_health}/{MaxHealth}";
 	}
 
 	private void SetFacingDirection(Vector2 direction)

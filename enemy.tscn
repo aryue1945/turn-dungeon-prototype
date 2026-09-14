@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://2oqfqxx5b61g"]
 
 [ext_resource type="Script" uid="uid://vl7xyt7nbapr" path="res://Scripts/Actors/Enemy.cs" id="1_4gyqm"]
-[ext_resource type="Texture2D" uid="uid://4q335xxs2p" path="res://icon.svg" id="2_qi2p4"]
+[ext_resource type="Texture2D" path="res://Art/Actors/enemy_slow_chaser.png" id="2_qi2p4"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_dso37"]
 size = Vector2(24, 24)
@@ -9,9 +9,13 @@ size = Vector2(24, 24)
 [node name="Enemy" type="CharacterBody2D" unique_id=1996207754]
 script = ExtResource("1_4gyqm")
 
+[node name="Shadow" type="Polygon2D" parent="."]
+z_index = -1
+polygon = PackedVector2Array(-11, 7, -7, 4, 7, 4, 11, 7, 7, 10, -7, 10)
+color = Color(0, 0, 0, 0.35)
+
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1456312894]
-modulate = Color(1, 0.02745098, 0, 1)
-scale = Vector2(0.3, 0.3)
+offset = Vector2(0, -8)
 texture = ExtResource("2_qi2p4")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1127124353]

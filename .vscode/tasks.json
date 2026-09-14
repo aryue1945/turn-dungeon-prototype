@@ -40,6 +40,30 @@
                 "kind": "test",
                 "isDefault": true
             }
+        },
+        {
+            "label": "import-assets",
+            "type": "process",
+            "command": "C:\\Godot_v4.7.2-stable_mono_win64\\Godot_v4.7.2-stable_mono_win64\\Godot_v4.7.2-stable_mono_win64_console.exe",
+            "args": [
+                "--headless",
+                "--path",
+                "${workspaceFolder}",
+                "--import"
+            ],
+            "options": {
+                "cwd": "${workspaceFolder}"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "prepare",
+            "dependsOrder": "sequence",
+            "dependsOn": [
+                "import-assets",
+                "test"
+            ],
+            "problemMatcher": []
         }
     ]
 }

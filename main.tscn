@@ -2,19 +2,25 @@
 
 [ext_resource type="Script" uid="uid://c1yh3u8s3mux" path="res://Scripts/Actors/Player.cs" id="1_0xm2m"]
 [ext_resource type="Script" uid="uid://df26ddt34kvqx" path="res://Scripts/Game/Main.cs" id="1_1bvp3"]
-[ext_resource type="Texture2D" uid="uid://4q335xxs2p" path="res://icon.svg" id="2_h2yge"]
+[ext_resource type="Texture2D" path="res://Art/Actors/player_inmate.png" id="2_h2yge"]
 
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_dso37"]
 size = Vector2(24, 24)
 
 [node name="Main" type="Node2D" unique_id=1899355104]
 script = ExtResource("1_1bvp3")
+y_sort_enabled = true
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=84754245]
 script = ExtResource("1_0xm2m")
 
+[node name="Shadow" type="Polygon2D" parent="Player"]
+z_index = -1
+polygon = PackedVector2Array(-11, 7, -7, 4, 7, 4, 11, 7, 7, 10, -7, 10)
+color = Color(0, 0, 0, 0.35)
+
 [node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=1733064919]
-scale = Vector2(0.3, 0.3)
+offset = Vector2(0, -8)
 texture = ExtResource("2_h2yge")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=1991409769]

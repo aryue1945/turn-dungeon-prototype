@@ -32,6 +32,13 @@ public partial class Main : Node2D
 
 	private PackedScene _enemyScene;
 	private PackedScene _wallScene;
+	private Texture2D _floorTexture;
+	private Texture2D _floorCrackedTexture;
+	private Texture2D _wallHorizontalTexture;
+	private Texture2D _wallVerticalTexture;
+	private Texture2D _wallCornerLeftTexture;
+	private Texture2D _wallCornerRightTexture;
+	private Texture2D _wallBarsTexture;
 
 	public override void _Ready()
 	{
@@ -39,6 +46,27 @@ public partial class Main : Node2D
 
 		_enemyScene = GD.Load<PackedScene>("res://enemy.tscn");
 		_wallScene = GD.Load<PackedScene>("res://wall.tscn");
+		_floorTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_floor.png"
+		);
+		_floorCrackedTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_floor_cracked.png"
+		);
+		_wallHorizontalTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_wall.png"
+		);
+		_wallVerticalTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_wall_vertical.png"
+		);
+		_wallCornerLeftTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_wall_corner_left.png"
+		);
+		_wallCornerRightTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_wall_corner_right.png"
+		);
+		_wallBarsTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_wall_bars.png"
+		);
 
 		_random.Randomize();
 
@@ -78,6 +106,12 @@ public partial class Main : Node2D
 
 	private void CreateRoom()
 	{
+		for (int y = 1; y < RoomHeight - 1; y++)
+		{
+			for (int x = 1; x < RoomWidth - 1; x++)
+				CreateFloor(x, y);
+		}
+
 		for (int x = 0; x < RoomWidth; x++)
 		{
 			CreateWall(x, 0);
@@ -91,12 +125,51 @@ public partial class Main : Node2D
 		}
 	}
 
+	private void CreateFloor(int x, int y)
+	{
+		bool useCrackedFloor = (x * 7 + y * 11) % 9 == 0;
+
+		Sprite2D floor = new()
+		{
+			Texture = useCrackedFloor
+				? _floorCrackedTexture
+				: _floorTexture,
+			Position = CellToPosition(x, y),
+			ZIndex = -10
+		};
+		AddChild(floor);
+	}
+
 	private void CreateWall(int x, int y)
 	{
 		Node2D wall = _wallScene.Instantiate<Node2D>();
 		wall.Position = CellToPosition(x, y);
+		wall.GetNode<Sprite2D>("Sprite2D").Texture =
+			GetWallTexture(x, y);
 		wall.AddToGroup("walls");
 		AddChild(wall);
+	}
+
+	private Texture2D GetWallTexture(int x, int y)
+	{
+		bool isLeft = x == 0;
+		bool isRight = x == RoomWidth - 1;
+		bool isTop = y == 0;
+		bool isBottom = y == RoomHeight - 1;
+
+		if ((isTop || isBottom) && isLeft)
+			return _wallCornerLeftTexture;
+
+		if ((isTop || isBottom) && isRight)
+			return _wallCornerRightTexture;
+
+		if (isTop && x % 3 == 1)
+			return _wallBarsTexture;
+
+		if (isTop || isBottom)
+			return _wallHorizontalTexture;
+
+		return _wallVerticalTexture;
 	}
 
 	private void PlacePlayerInCenter()
