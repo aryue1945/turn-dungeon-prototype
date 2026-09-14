@@ -5,9 +5,9 @@ using System.Collections.Generic;
 public partial class Main : Node2D
 {
 	private const float TileSize = 32.0f;
-	private const int MapWidth = 48;
-	private const int MapHeight = 32;
-	private const int TargetRoomCount = 10;
+	private const int MapWidth = 24;
+	private const int MapHeight = 16;
+	private const int TargetRoomCount = 5;
 	private const float MinimumCameraZoom = 0.5f;
 	private const float MaximumCameraZoom = 2.0f;
 	private const float CameraZoomStep = 0.25f;
