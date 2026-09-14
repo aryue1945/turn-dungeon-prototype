@@ -94,6 +94,14 @@ public static class TerrainCatalog
 
 public readonly record struct GridPosition(int X, int Y);
 
+public enum DungeonZoneType
+{
+	Start,
+	Combat,
+	Shop,
+	Exit
+}
+
 public sealed class DungeonCell
 {
 	public GridPosition Position { get; }
@@ -152,28 +160,55 @@ public sealed class DungeonRoom
 	}
 }
 
+public sealed class DungeonZone
+{
+	private readonly List<int> _connectedZoneIds = new();
+
+	public int Id { get; }
+	public DungeonRoom Room { get; }
+	public GridPosition LayoutPosition { get; }
+	public GridPosition TemplateOrigin { get; }
+	public DungeonZoneType Type { get; internal set; }
+	public string TemplateName { get; internal set; } = "Open";
+	public int TemplateRotation { get; internal set; }
+	public bool TemplateMirrored { get; internal set; }
+	public IReadOnlyList<int> ConnectedZoneIds => _connectedZoneIds;
+
+	public DungeonZone(
+		int id,
+		DungeonRoom room,
+		GridPosition layoutPosition,
+		GridPosition templateOrigin)
+	{
+		Id = id;
+		Room = room;
+		LayoutPosition = layoutPosition;
+		TemplateOrigin = templateOrigin;
+	}
+
+	internal void ConnectTo(int zoneId)
+	{
+		if (zoneId != Id && !_connectedZoneIds.Contains(zoneId))
+			_connectedZoneIds.Add(zoneId);
+	}
+}
+
 public sealed class DungeonGenerationRequest
 {
 	public int Width { get; }
 	public int Height { get; }
-	public int TargetRoomCount { get; }
-	public int MinimumRoomWidth { get; }
-	public int MinimumRoomHeight { get; }
+	public int TargetZoneCount { get; }
 	public int Seed { get; }
 
 	public DungeonGenerationRequest(
 		int width,
 		int height,
-		int targetRoomCount,
-		int minimumRoomWidth,
-		int minimumRoomHeight,
+		int targetZoneCount,
 		int seed)
 	{
 		Width = width;
 		Height = height;
-		TargetRoomCount = targetRoomCount;
-		MinimumRoomWidth = minimumRoomWidth;
-		MinimumRoomHeight = minimumRoomHeight;
+		TargetZoneCount = targetZoneCount;
 		Seed = seed;
 	}
 }
@@ -182,11 +217,13 @@ public sealed class DungeonMap
 {
 	private readonly DungeonCell[,] _cells;
 	private IReadOnlyList<DungeonRoom> _rooms = Array.Empty<DungeonRoom>();
+	private IReadOnlyList<DungeonZone> _zones = Array.Empty<DungeonZone>();
 
 	public int Width { get; }
 	public int Height { get; }
 	public int Seed { get; }
 	public IReadOnlyList<DungeonRoom> Rooms => _rooms;
+	public IReadOnlyList<DungeonZone> Zones => _zones;
 
 	public DungeonMap(int width, int height, int seed)
 	{
@@ -230,6 +267,13 @@ public sealed class DungeonMap
 		return cell?.ZoneId ?? -1;
 	}
 
+	public DungeonZone GetZone(int zoneId)
+	{
+		return zoneId >= 0 && zoneId < _zones.Count
+			? _zones[zoneId]
+			: null;
+	}
+
 	public bool DamageTerrain(int x, int y, int damage)
 	{
 		DungeonCell cell = GetCell(x, y);
@@ -247,8 +291,7 @@ public sealed class DungeonMap
 		{
 			for (int x = 0; x < Width; x++)
 			{
-				char symbol = _cells[x, y].Terrain.DebugSymbol;
-				output.Append(symbol);
+				output.Append(_cells[x, y].Terrain.DebugSymbol);
 				output.Append(' ');
 			}
 
@@ -259,6 +302,17 @@ public sealed class DungeonMap
 			"Legend: # solid, B breakable, D door, . floor, " +
 			"F fire, I ice (each cell uses two columns)"
 		);
+
+		foreach (DungeonZone zone in Zones)
+		{
+			output.AppendLine();
+			output.Append(
+				$"Zone {zone.Id}: {zone.Type}, " +
+				$"template {zone.TemplateName}, " +
+				$"connections [{string.Join(", ", zone.ConnectedZoneIds)}]"
+			);
+		}
+
 		return output.ToString();
 	}
 
@@ -296,5 +350,10 @@ public sealed class DungeonMap
 	internal void SetRooms(IReadOnlyList<DungeonRoom> rooms)
 	{
 		_rooms = rooms;
+	}
+
+	internal void SetZones(IReadOnlyList<DungeonZone> zones)
+	{
+		_zones = zones;
 	}
 }
