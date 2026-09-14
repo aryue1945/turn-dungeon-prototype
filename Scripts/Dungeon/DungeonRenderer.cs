@@ -1,4 +1,5 @@
 using Godot;
+using System.Collections.Generic;
 
 public sealed class DungeonRenderer
 {
@@ -14,6 +15,7 @@ public sealed class DungeonRenderer
 	private readonly Texture2D _doorTexture;
 	private readonly Vector2 _origin;
 	private readonly float _tileSize;
+	private readonly Dictionary<GridPosition, List<Node2D>> _cellNodes = new();
 
 	public DungeonRenderer(
 		Node2D root,
@@ -48,20 +50,57 @@ public sealed class DungeonRenderer
 		for (int y = 0; y < map.Height; y++)
 		{
 			for (int x = 0; x < map.Width; x++)
-			{
-				TerrainKind terrain = map.GetCell(x, y).Terrain.Kind;
+				RenderCell(map, x, y);
+		}
+	}
 
-				if (map.GetCell(x, y).IsWalkable)
-				{
-					CreateFloor(x, y);
-				}
+	public void RefreshCell(DungeonMap map, int x, int y)
+	{
+		ClearCell(new GridPosition(x, y));
+		RenderCell(map, x, y);
+	}
 
-				if (terrain == TerrainKind.SolidWall ||
-					terrain == TerrainKind.BreakableWall)
-					CreateWall(map, x, y);
-				else if (terrain == TerrainKind.Door)
-					CreateDoor(x, y);
-			}
+	private void RenderCell(DungeonMap map, int x, int y)
+	{
+		DungeonCell cell = map.GetCell(x, y);
+
+		if (cell == null || cell.Terrain.Kind == TerrainKind.Empty)
+			return;
+
+		GridPosition position = new(x, y);
+
+		if (cell.IsWalkable)
+			Track(position, CreateFloor(x, y));
+
+		if (cell.Terrain.Kind == TerrainKind.SolidWall ||
+			cell.Terrain.Kind == TerrainKind.BreakableWall)
+		{
+			Track(position, CreateWall(map, x, y));
+		}
+		else if (cell.Terrain.Kind == TerrainKind.Door)
+			Track(position, CreateDoor(x, y));
+	}
+
+	private void Track(GridPosition position, Node2D node)
+	{
+		if (!_cellNodes.TryGetValue(position, out List<Node2D> nodes))
+		{
+			nodes = new List<Node2D>();
+			_cellNodes[position] = nodes;
+		}
+
+		nodes.Add(node);
+	}
+
+	private void ClearCell(GridPosition position)
+	{
+		if (!_cellNodes.Remove(position, out List<Node2D> nodes))
+			return;
+
+		foreach (Node2D node in nodes)
+		{
+			if (GodotObject.IsInstanceValid(node))
+				node.QueueFree();
 		}
 	}
 
@@ -70,7 +109,7 @@ public sealed class DungeonRenderer
 		return _origin + new Vector2(x * _tileSize, y * _tileSize);
 	}
 
-	private void CreateFloor(int x, int y)
+	private Node2D CreateFloor(int x, int y)
 	{
 		bool useCrackedFloor = (x * 7 + y * 11) % 9 == 0;
 
@@ -83,9 +122,10 @@ public sealed class DungeonRenderer
 			ZIndex = -10
 		};
 		_root.AddChild(floor);
+		return floor;
 	}
 
-	private void CreateWall(DungeonMap map, int x, int y)
+	private Node2D CreateWall(DungeonMap map, int x, int y)
 	{
 		Node2D wall = _wallScene.Instantiate<Node2D>();
 		wall.Position = CellToPosition(x, y);
@@ -93,9 +133,10 @@ public sealed class DungeonRenderer
 			GetWallTexture(map, x, y);
 		wall.AddToGroup("walls");
 		_root.AddChild(wall);
+		return wall;
 	}
 
-	private void CreateDoor(int x, int y)
+	private Node2D CreateDoor(int x, int y)
 	{
 		Sprite2D door = new()
 		{
@@ -105,6 +146,7 @@ public sealed class DungeonRenderer
 			ZIndex = -1
 		};
 		_root.AddChild(door);
+		return door;
 	}
 
 	private Texture2D GetWallTexture(DungeonMap map, int x, int y)

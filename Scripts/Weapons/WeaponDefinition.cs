@@ -1,4 +1,4 @@
-public sealed class WeaponDefinition
+public sealed class WeaponDefinition : IEquipment
 {
 	public string Name { get; }
 	public AttackDefinition PrimaryAttack { get; }

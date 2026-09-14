@@ -29,6 +29,7 @@ public partial class Main : Node2D
 	private Player _player;
 	private Label _healthLabel;
 	private Label _weaponLabel;
+	private Label _toolLabel;
 	private Label _statusLabel;
 	private Button _restartButton;
 	private Control _endGameOverlay;
@@ -47,6 +48,7 @@ public partial class Main : Node2D
 	private Texture2D _wallBarsTexture;
 	private Texture2D _doorTexture;
 	private DungeonMap _dungeonMap;
+	private DungeonRenderer _dungeonRenderer;
 	private int _dungeonSeed;
 	private int _currentPlayerZoneId = -1;
 	private Camera2D _camera;
@@ -101,6 +103,22 @@ public partial class Main : Node2D
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
+		if (!_gameStarted &&
+			@event is InputEventKey weaponKey &&
+			weaponKey.Pressed &&
+			!weaponKey.Echo)
+		{
+			if (weaponKey.Keycode == Key.Key1)
+				OnBasicSwordSelected();
+			else if (weaponKey.Keycode == Key.Key2)
+				OnLongSwordSelected();
+			else
+				return;
+
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
 		if (@event is InputEventMouseButton mouseButton &&
 			mouseButton.Pressed)
 		{
@@ -171,7 +189,7 @@ public partial class Main : Node2D
 		_dungeonMap = new DungeonGenerator().Generate(request);
 		GD.Print(_dungeonMap.ToDebugString());
 
-		DungeonRenderer renderer = new(
+		_dungeonRenderer = new(
 			this,
 			_wallScene,
 			_floorTexture,
@@ -185,7 +203,7 @@ public partial class Main : Node2D
 			MapOrigin,
 			TileSize
 		);
-		renderer.Render(_dungeonMap);
+		_dungeonRenderer.Render(_dungeonMap);
 
 		GD.Print(
 			$"Dungeon seed: {_dungeonSeed}; " +
@@ -366,7 +384,7 @@ public partial class Main : Node2D
 		hudPanel.OffsetLeft = 12;
 		hudPanel.OffsetTop = 12;
 		hudPanel.OffsetRight = 224;
-		hudPanel.OffsetBottom = 88;
+		hudPanel.OffsetBottom = 112;
 
 		MarginContainer hudMargin = new();
 		hudMargin.AddThemeConstantOverride("margin_left", 10);
@@ -394,6 +412,14 @@ public partial class Main : Node2D
 		_weaponLabel.AddThemeFontSizeOverride("font_size", 16);
 		_weaponLabel.AddThemeColorOverride("font_color", Colors.White);
 		hud.AddChild(_weaponLabel);
+
+		_toolLabel = new Label
+		{
+			Text = $"Tool: {_player.DiggingTool.Name}"
+		};
+		_toolLabel.AddThemeFontSizeOverride("font_size", 16);
+		_toolLabel.AddThemeColorOverride("font_color", Colors.White);
+		hud.AddChild(_toolLabel);
 
 		CenterContainer endGameCenter = new();
 		uiRoot.AddChild(endGameCenter);
@@ -464,7 +490,7 @@ public partial class Main : Node2D
 
 		PanelContainer selectionPanel = new()
 		{
-			CustomMinimumSize = new Vector2(280, 220)
+			CustomMinimumSize = new Vector2(280, 250)
 		};
 		selectionCenter.AddChild(selectionPanel);
 		_weaponSelectionPanel = selectionRoot;
@@ -492,7 +518,7 @@ public partial class Main : Node2D
 		Button basicSwordButton = new()
 		{
 			CustomMinimumSize = new Vector2(208, 44),
-			Text = "Basic Sword"
+			Text = "[1] Basic Sword"
 		};
 		basicSwordButton.Pressed += OnBasicSwordSelected;
 		selectionBox.AddChild(basicSwordButton);
@@ -500,12 +526,30 @@ public partial class Main : Node2D
 		Button longSwordButton = new()
 		{
 			CustomMinimumSize = new Vector2(208, 44),
-			Text = "Long Sword"
+			Text = "[2] Long Sword"
 		};
 		longSwordButton.Pressed += OnLongSwordSelected;
 		selectionBox.AddChild(longSwordButton);
 
+		Label keyboardHint = new()
+		{
+			Text = "Up/Down, then Enter or Space",
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		keyboardHint.AddThemeFontSizeOverride("font_size", 14);
+		selectionBox.AddChild(keyboardHint);
+
+		basicSwordButton.FocusNeighborTop =
+			basicSwordButton.GetPathTo(longSwordButton);
+		basicSwordButton.FocusNeighborBottom =
+			basicSwordButton.GetPathTo(longSwordButton);
+		longSwordButton.FocusNeighborTop =
+			longSwordButton.GetPathTo(basicSwordButton);
+		longSwordButton.FocusNeighborBottom =
+			longSwordButton.GetPathTo(basicSwordButton);
+
 		_player.SetProcessUnhandledInput(false);
+		basicSwordButton.GrabFocus();
 	}
 
 	private bool IsWallAt(Vector2 position)
@@ -598,7 +642,36 @@ public partial class Main : Node2D
 
 		if (attackResult == AttackTurnResult.NoAttack)
 		{
-			if (!IsWallAt(targetPosition))
+			GridPosition targetCell = PositionToCell(targetPosition);
+			DigResult digResult = DigResolver.TryDig(
+				_dungeonMap,
+				targetCell,
+				_player.DiggingTool
+			);
+
+			if (digResult != DigResult.NoTarget)
+			{
+				DungeonCell cell = _dungeonMap.GetCell(
+					targetCell.X,
+					targetCell.Y
+				);
+				GD.Print(
+					digResult == DigResult.Destroyed
+						? $"Player destroyed terrain at {targetCell}."
+						: $"Player dug terrain at {targetCell}; " +
+							$"durability {cell.Durability}."
+				);
+
+				if (digResult == DigResult.Destroyed)
+				{
+					_dungeonRenderer.RefreshCell(
+						_dungeonMap,
+						targetCell.X,
+						targetCell.Y
+					);
+				}
+			}
+			else if (!IsWallAt(targetPosition))
 			{
 				_player.Move(direction);
 				UpdatePlayerZone();

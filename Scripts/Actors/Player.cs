@@ -19,6 +19,8 @@ public partial class Player : CharacterBody2D, ICombatant
 	public CombatFaction Faction => CombatFaction.Player;
 	public WeaponDefinition Weapon { get; private set; } =
 		WeaponDefinitions.BasicSword;
+	public DiggingToolDefinition DiggingTool { get; private set; } =
+		DiggingToolDefinitions.BasicShovel;
 	public AttackState Attack { get; } = new(
 		WeaponDefinitions.BasicSword.PrimaryAttack
 	);
@@ -66,6 +68,11 @@ public partial class Player : CharacterBody2D, ICombatant
 	{
 		Weapon = weapon;
 		Attack.Equip(weapon.PrimaryAttack);
+	}
+
+	public void EquipDiggingTool(DiggingToolDefinition diggingTool)
+	{
+		DiggingTool = diggingTool;
 	}
 
 	public void Move(Vector2 direction)
