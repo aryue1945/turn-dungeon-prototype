@@ -1,13 +1,19 @@
 using Godot;
+using System;
 using System.Collections.Generic;
+using System.Linq;
 
 public partial class Main : Node2D
 {
 	private const float TileSize = 32.0f;
-	private const int RoomWidth = 15;
-	private const int RoomHeight = 11;
+	private const int MapWidth = 24;
+	private const int MapHeight = 16;
+	private const int TargetZoneCount = 5;
+	private const float MinimumCameraZoom = 0.5f;
+	private const float MaximumCameraZoom = 2.0f;
+	private const float CameraZoomStep = 0.25f;
 
-	private static readonly Vector2 RoomOrigin = new(64, 64);
+	private static readonly Vector2 MapOrigin = Vector2.Zero;
 	private static readonly EnemyMovementType[] EnemyTypes =
 	{
 		EnemyMovementType.SlowChaser,
@@ -39,6 +45,11 @@ public partial class Main : Node2D
 	private Texture2D _wallCornerLeftTexture;
 	private Texture2D _wallCornerRightTexture;
 	private Texture2D _wallBarsTexture;
+	private Texture2D _doorTexture;
+	private DungeonMap _dungeonMap;
+	private int _dungeonSeed;
+	private int _currentPlayerZoneId = -1;
+	private Camera2D _camera;
 
 	public override void _Ready()
 	{
@@ -67,12 +78,15 @@ public partial class Main : Node2D
 		_wallBarsTexture = GD.Load<Texture2D>(
 			"res://Art/Tiles/prison_wall_bars.png"
 		);
+		_doorTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_cell_door.png"
+		);
 
 		_random.Randomize();
 
-		CreateRoom();
-		CreateRoomCamera();
-		PlacePlayerInCenter();
+		CreateDungeon();
+		PlacePlayerInStartRoom();
+		CreateFollowingCamera();
 		SpawnEnemies();
 		CreateGameUi();
 		CreateWeaponSelection();
@@ -85,98 +99,176 @@ public partial class Main : Node2D
 		GD.Print($"Spawned {_enemies.Count} enemies.");
 	}
 
-	private Vector2 CellToPosition(int x, int y)
+	public override void _UnhandledInput(InputEvent @event)
 	{
-		return RoomOrigin + new Vector2(x * TileSize, y * TileSize);
+		if (@event is InputEventMouseButton mouseButton &&
+			mouseButton.Pressed)
+		{
+			if (mouseButton.ButtonIndex == MouseButton.WheelDown)
+				AdjustCameraZoom(-CameraZoomStep);
+			else if (mouseButton.ButtonIndex == MouseButton.WheelUp)
+				AdjustCameraZoom(CameraZoomStep);
+			else
+				return;
+
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
+		if (@event is not InputEventKey keyEvent ||
+			!keyEvent.Pressed ||
+			keyEvent.Echo)
+		{
+			return;
+		}
+
+		switch (keyEvent.Keycode)
+		{
+			case Key.Minus:
+			case Key.KpSubtract:
+				AdjustCameraZoom(-CameraZoomStep);
+				break;
+			case Key.Equal:
+			case Key.KpAdd:
+				AdjustCameraZoom(CameraZoomStep);
+				break;
+			case Key.Key0:
+				SetCameraZoom(1.0f);
+				break;
+			default:
+				return;
+		}
+
+		GetViewport().SetInputAsHandled();
 	}
 
-	private void CreateRoomCamera()
+	private Vector2 CellToPosition(GridPosition cell)
 	{
-		Camera2D camera = new()
+		return MapOrigin + new Vector2(
+			cell.X * TileSize,
+			cell.Y * TileSize
+		);
+	}
+
+	private GridPosition PositionToCell(Vector2 position)
+	{
+		Vector2 localPosition = (position - MapOrigin) / TileSize;
+		return new GridPosition(
+			Mathf.RoundToInt(localPosition.X),
+			Mathf.RoundToInt(localPosition.Y)
+		);
+	}
+
+	private void CreateDungeon()
+	{
+		_dungeonSeed = unchecked((int)_random.Randi());
+		DungeonGenerationRequest request = new(
+			MapWidth,
+			MapHeight,
+			TargetZoneCount,
+			seed: _dungeonSeed
+		);
+		_dungeonMap = new DungeonGenerator().Generate(request);
+		GD.Print(_dungeonMap.ToDebugString());
+
+		DungeonRenderer renderer = new(
+			this,
+			_wallScene,
+			_floorTexture,
+			_floorCrackedTexture,
+			_wallHorizontalTexture,
+			_wallVerticalTexture,
+			_wallCornerLeftTexture,
+			_wallCornerRightTexture,
+			_wallBarsTexture,
+			_doorTexture,
+			MapOrigin,
+			TileSize
+		);
+		renderer.Render(_dungeonMap);
+
+		GD.Print(
+			$"Dungeon seed: {_dungeonSeed}; " +
+			$"zones: {_dungeonMap.Zones.Count}."
+		);
+	}
+
+	private void PlacePlayerInStartRoom()
+	{
+		DungeonZone startZone = _dungeonMap.Zones.Single(
+			zone => zone.Type == DungeonZoneType.Start
+		);
+		GridPosition startCell = startZone.Room.Center;
+		_player.Position = CellToPosition(startCell);
+		UpdatePlayerZone();
+	}
+
+	private void UpdatePlayerZone()
+	{
+		GridPosition cell = PositionToCell(_player.Position);
+		int zoneId = _dungeonMap.GetZoneId(cell.X, cell.Y);
+
+		// A door belongs to both neighboring zones, so retain the
+		// current zone until the player steps onto the next room floor.
+		if (zoneId < 0 || zoneId == _currentPlayerZoneId)
+			return;
+
+		if (_currentPlayerZoneId >= 0)
+			OnPlayerExitedZone(_currentPlayerZoneId);
+
+		_currentPlayerZoneId = zoneId;
+		OnPlayerEnteredZone(zoneId);
+	}
+
+	private void OnPlayerEnteredZone(int zoneId)
+	{
+		DungeonZone zone = _dungeonMap.GetZone(zoneId);
+		GD.Print(
+			$"Player entered zone {zoneId}: {zone.Type}, " +
+			$"template {zone.TemplateName}."
+		);
+	}
+
+	private static void OnPlayerExitedZone(int zoneId)
+	{
+		GD.Print($"Player exited zone {zoneId}.");
+	}
+
+	private void CreateFollowingCamera()
+	{
+		_camera = new Camera2D
 		{
-			Position = RoomOrigin + new Vector2(
-				(RoomWidth - 1) * TileSize / 2.0f,
-				(RoomHeight - 1) * TileSize / 2.0f
+			Position = Vector2.Zero,
+			PositionSmoothingEnabled = true,
+			PositionSmoothingSpeed = 8.0f,
+			LimitLeft = Mathf.RoundToInt(MapOrigin.X - TileSize / 2),
+			LimitTop = Mathf.RoundToInt(MapOrigin.Y - TileSize / 2),
+			LimitRight = Mathf.RoundToInt(
+				MapOrigin.X + (MapWidth - 1) * TileSize + TileSize / 2
+			),
+			LimitBottom = Mathf.RoundToInt(
+				MapOrigin.Y + (MapHeight - 1) * TileSize + TileSize / 2
 			)
 		};
 
-		AddChild(camera);
-		camera.MakeCurrent();
+		_player.AddChild(_camera);
+		_camera.MakeCurrent();
 	}
 
-	private void CreateRoom()
+	private void AdjustCameraZoom(float amount)
 	{
-		for (int y = 1; y < RoomHeight - 1; y++)
-		{
-			for (int x = 1; x < RoomWidth - 1; x++)
-				CreateFloor(x, y);
-		}
-
-		for (int x = 0; x < RoomWidth; x++)
-		{
-			CreateWall(x, 0);
-			CreateWall(x, RoomHeight - 1);
-		}
-
-		for (int y = 1; y < RoomHeight - 1; y++)
-		{
-			CreateWall(0, y);
-			CreateWall(RoomWidth - 1, y);
-		}
+		SetCameraZoom(_camera.Zoom.X + amount);
 	}
 
-	private void CreateFloor(int x, int y)
+	private void SetCameraZoom(float zoom)
 	{
-		bool useCrackedFloor = (x * 7 + y * 11) % 9 == 0;
-
-		Sprite2D floor = new()
-		{
-			Texture = useCrackedFloor
-				? _floorCrackedTexture
-				: _floorTexture,
-			Position = CellToPosition(x, y),
-			ZIndex = -10
-		};
-		AddChild(floor);
-	}
-
-	private void CreateWall(int x, int y)
-	{
-		Node2D wall = _wallScene.Instantiate<Node2D>();
-		wall.Position = CellToPosition(x, y);
-		wall.GetNode<Sprite2D>("Sprite2D").Texture =
-			GetWallTexture(x, y);
-		wall.AddToGroup("walls");
-		AddChild(wall);
-	}
-
-	private Texture2D GetWallTexture(int x, int y)
-	{
-		bool isLeft = x == 0;
-		bool isRight = x == RoomWidth - 1;
-		bool isTop = y == 0;
-		bool isBottom = y == RoomHeight - 1;
-
-		if ((isTop || isBottom) && isLeft)
-			return _wallCornerLeftTexture;
-
-		if ((isTop || isBottom) && isRight)
-			return _wallCornerRightTexture;
-
-		if (isTop && x % 3 == 1)
-			return _wallBarsTexture;
-
-		if (isTop || isBottom)
-			return _wallHorizontalTexture;
-
-		return _wallVerticalTexture;
-	}
-
-	private void PlacePlayerInCenter()
-	{
-		int centerX = RoomWidth / 2;
-		int centerY = RoomHeight / 2;
-		_player.Position = CellToPosition(centerX, centerY);
+		float clampedZoom = Mathf.Clamp(
+			zoom,
+			MinimumCameraZoom,
+			MaximumCameraZoom
+		);
+		_camera.Zoom = Vector2.One * clampedZoom;
+		GD.Print($"Camera zoom: {clampedZoom:0.00}x");
 	}
 
 	private void SpawnEnemies()
@@ -186,17 +278,21 @@ public partial class Main : Node2D
 			_player.Position
 		};
 
+		List<DungeonZone> combatZones = _dungeonMap.Zones
+			.Where(zone => zone.Type == DungeonZoneType.Combat)
+			.ToList();
+
+		if (combatZones.Count == 0)
+			return;
+
 		for (int i = 0; i < EnemyTypes.Length; i++)
 		{
-			Vector2 enemyPosition;
-
-			do
-			{
-				int enemyX = _random.RandiRange(1, RoomWidth - 2);
-				int enemyY = _random.RandiRange(1, RoomHeight - 2);
-				enemyPosition = CellToPosition(enemyX, enemyY);
-			}
-			while (occupiedPositions.Contains(enemyPosition));
+			DungeonRoom room = combatZones[i % combatZones.Count].Room;
+			GridPosition enemyCell = GetRandomSpawnCell(
+				room,
+				occupiedPositions
+			);
+			Vector2 enemyPosition = CellToPosition(enemyCell);
 
 			EnemyMovementType movementType = EnemyTypes[i];
 			Enemy enemy = _enemyScene.Instantiate<Enemy>();
@@ -208,6 +304,45 @@ public partial class Main : Node2D
 			_enemies.Add(enemy);
 			AddChild(enemy);
 		}
+	}
+
+	private GridPosition GetRandomSpawnCell(
+		DungeonRoom room,
+		HashSet<Vector2> occupiedPositions)
+	{
+		for (int attempt = 0; attempt < 100; attempt++)
+		{
+			GridPosition cell = new(
+				_random.RandiRange(room.X, room.Right - 1),
+				_random.RandiRange(room.Y, room.Bottom - 1)
+			);
+			Vector2 position = CellToPosition(cell);
+
+			if (_dungeonMap.IsWalkable(cell.X, cell.Y) &&
+				!occupiedPositions.Contains(position))
+			{
+				return cell;
+			}
+		}
+
+		for (int y = room.Y; y < room.Bottom; y++)
+		{
+			for (int x = room.X; x < room.Right; x++)
+			{
+				GridPosition cell = new(x, y);
+				Vector2 position = CellToPosition(cell);
+
+				if (_dungeonMap.IsWalkable(x, y) &&
+					!occupiedPositions.Contains(position))
+				{
+					return cell;
+				}
+			}
+		}
+
+		throw new InvalidOperationException(
+			"No free spawn cell exists in the selected room."
+		);
 	}
 
 	private static Control CreateFullRectRoot(CanvasLayer layer)
@@ -375,16 +510,8 @@ public partial class Main : Node2D
 
 	private bool IsWallAt(Vector2 position)
 	{
-		foreach (Node node in GetTree().GetNodesInGroup("walls"))
-		{
-			if (node is Node2D wall &&
-				wall.Position.IsEqualApprox(position))
-			{
-				return true;
-			}
-		}
-
-		return false;
+		GridPosition cell = PositionToCell(position);
+		return !_dungeonMap.IsWalkable(cell.X, cell.Y);
 	}
 
 	private bool IsEnemyActive(Enemy enemy)
@@ -472,7 +599,10 @@ public partial class Main : Node2D
 		if (attackResult == AttackTurnResult.NoAttack)
 		{
 			if (!IsWallAt(targetPosition))
+			{
 				_player.Move(direction);
+				UpdatePlayerZone();
+			}
 			else
 				GD.Print($"Player hit wall at {targetPosition}");
 		}
