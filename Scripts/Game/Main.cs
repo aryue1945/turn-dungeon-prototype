@@ -44,6 +44,7 @@ public partial class Main : Node2D
 	private Texture2D _doorTexture;
 	private DungeonMap _dungeonMap;
 	private int _dungeonSeed;
+	private int _currentPlayerZoneId = -1;
 
 	public override void _Ready()
 	{
@@ -113,12 +114,15 @@ public partial class Main : Node2D
 	private void CreateDungeon()
 	{
 		_dungeonSeed = unchecked((int)_random.Randi());
-		_dungeonMap = new DungeonGenerator().Generate(
+		DungeonGenerationRequest request = new(
 			MapWidth,
 			MapHeight,
-			_dungeonSeed,
-			TargetRoomCount
+			TargetRoomCount,
+			minimumRoomWidth: 5,
+			minimumRoomHeight: 5,
+			seed: _dungeonSeed
 		);
+		_dungeonMap = new DungeonGenerator().Generate(request);
 
 		DungeonRenderer renderer = new(
 			this,
@@ -146,6 +150,34 @@ public partial class Main : Node2D
 	{
 		GridPosition startCell = _dungeonMap.Rooms[0].Center;
 		_player.Position = CellToPosition(startCell);
+		UpdatePlayerZone();
+	}
+
+	private void UpdatePlayerZone()
+	{
+		GridPosition cell = PositionToCell(_player.Position);
+		int zoneId = _dungeonMap.GetZoneId(cell.X, cell.Y);
+
+		// A door belongs to both neighboring zones, so retain the
+		// current zone until the player steps onto the next room floor.
+		if (zoneId < 0 || zoneId == _currentPlayerZoneId)
+			return;
+
+		if (_currentPlayerZoneId >= 0)
+			OnPlayerExitedZone(_currentPlayerZoneId);
+
+		_currentPlayerZoneId = zoneId;
+		OnPlayerEnteredZone(zoneId);
+	}
+
+	private static void OnPlayerEnteredZone(int zoneId)
+	{
+		GD.Print($"Player entered zone {zoneId}.");
+	}
+
+	private static void OnPlayerExitedZone(int zoneId)
+	{
+		GD.Print($"Player exited zone {zoneId}.");
 	}
 
 	private void CreateFollowingCamera()
@@ -492,7 +524,10 @@ public partial class Main : Node2D
 		if (attackResult == AttackTurnResult.NoAttack)
 		{
 			if (!IsWallAt(targetPosition))
+			{
 				_player.Move(direction);
+				UpdatePlayerZone();
+			}
 			else
 				GD.Print($"Player hit wall at {targetPosition}");
 		}
