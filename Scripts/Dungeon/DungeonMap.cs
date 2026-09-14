@@ -246,14 +246,18 @@ public sealed class DungeonMap
 		for (int y = 0; y < Height; y++)
 		{
 			for (int x = 0; x < Width; x++)
-				output.Append(_cells[x, y].Terrain.DebugSymbol);
+			{
+				char symbol = _cells[x, y].Terrain.DebugSymbol;
+				output.Append(symbol);
+				output.Append(symbol);
+			}
 
 			output.AppendLine();
 		}
 
 		output.Append(
-			"Legend: # solid, B breakable, D door, . floor, " +
-			"F fire, I ice"
+			"Legend: ## solid, BB breakable, DD door, .. floor, " +
+			"FF fire, II ice"
 		);
 		return output.ToString();
 	}
