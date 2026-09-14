@@ -1,12 +1,95 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 
-public enum DungeonTerrain
+public enum TerrainKind
 {
 	Empty,
 	Floor,
-	Wall,
-	Door
+	SolidWall,
+	BreakableWall,
+	Door,
+	Fire,
+	Ice
+}
+
+public sealed class TerrainDefinition
+{
+	public TerrainKind Kind { get; }
+	public string Name { get; }
+	public char DebugSymbol { get; }
+	public bool IsWalkable { get; }
+	public int MaxDurability { get; }
+	public int ContactDamage { get; }
+	public TerrainKind? DestroyedInto { get; }
+	public bool IsDestructible =>
+		MaxDurability > 0 && DestroyedInto.HasValue;
+
+	public TerrainDefinition(
+		TerrainKind kind,
+		string name,
+		char debugSymbol,
+		bool isWalkable,
+		int maxDurability = 0,
+		int contactDamage = 0,
+		TerrainKind? destroyedInto = null)
+	{
+		Kind = kind;
+		Name = name;
+		DebugSymbol = debugSymbol;
+		IsWalkable = isWalkable;
+		MaxDurability = maxDurability;
+		ContactDamage = contactDamage;
+		DestroyedInto = destroyedInto;
+	}
+}
+
+public static class TerrainCatalog
+{
+	private static readonly IReadOnlyDictionary<
+		TerrainKind,
+		TerrainDefinition
+	> Definitions = new Dictionary<TerrainKind, TerrainDefinition>
+	{
+		[TerrainKind.Empty] = new(
+			TerrainKind.Empty, "Empty", ' ', isWalkable: false
+		),
+		[TerrainKind.Floor] = new(
+			TerrainKind.Floor, "Floor", '.', isWalkable: true
+		),
+		[TerrainKind.SolidWall] = new(
+			TerrainKind.SolidWall,
+			"Solid Wall",
+			'#',
+			isWalkable: false
+		),
+		[TerrainKind.BreakableWall] = new(
+			TerrainKind.BreakableWall,
+			"Breakable Wall",
+			'B',
+			isWalkable: false,
+			maxDurability: 1,
+			destroyedInto: TerrainKind.Floor
+		),
+		[TerrainKind.Door] = new(
+			TerrainKind.Door, "Door", 'D', isWalkable: true
+		),
+		[TerrainKind.Fire] = new(
+			TerrainKind.Fire,
+			"Fire",
+			'F',
+			isWalkable: true,
+			contactDamage: 1
+		),
+		[TerrainKind.Ice] = new(
+			TerrainKind.Ice, "Ice", 'I', isWalkable: true
+		)
+	};
+
+	public static TerrainDefinition Get(TerrainKind kind)
+	{
+		return Definitions[kind];
+	}
 }
 
 public readonly record struct GridPosition(int X, int Y);
@@ -14,17 +97,37 @@ public readonly record struct GridPosition(int X, int Y);
 public sealed class DungeonCell
 {
 	public GridPosition Position { get; }
-	public DungeonTerrain Terrain { get; internal set; }
+	public TerrainDefinition Terrain { get; private set; }
+	public int Durability { get; private set; }
 	public int ZoneId { get; internal set; } = -1;
 	public int ConnectedZoneA { get; internal set; } = -1;
 	public int ConnectedZoneB { get; internal set; } = -1;
-	public bool IsWalkable =>
-		Terrain == DungeonTerrain.Floor ||
-		Terrain == DungeonTerrain.Door;
+	public bool IsWalkable => Terrain.IsWalkable;
 
 	internal DungeonCell(GridPosition position)
 	{
 		Position = position;
+		SetTerrain(TerrainKind.Empty);
+	}
+
+	internal void SetTerrain(TerrainKind terrainKind)
+	{
+		Terrain = TerrainCatalog.Get(terrainKind);
+		Durability = Terrain.MaxDurability;
+	}
+
+	internal bool DamageTerrain(int damage)
+	{
+		if (damage <= 0 || !Terrain.IsDestructible)
+			return false;
+
+		Durability = Math.Max(0, Durability - damage);
+
+		if (Durability > 0)
+			return false;
+
+		SetTerrain(Terrain.DestroyedInto.Value);
+		return true;
 	}
 }
 
@@ -127,12 +230,40 @@ public sealed class DungeonMap
 		return cell?.ZoneId ?? -1;
 	}
 
-	internal void SetTerrain(int x, int y, DungeonTerrain terrain)
+	public bool DamageTerrain(int x, int y, int damage)
+	{
+		DungeonCell cell = GetCell(x, y);
+		return cell != null && cell.DamageTerrain(damage);
+	}
+
+	public string ToDebugString()
+	{
+		StringBuilder output = new();
+		output.AppendLine(
+			$"Dungeon map {Width}x{Height}, seed {Seed}:"
+		);
+
+		for (int y = 0; y < Height; y++)
+		{
+			for (int x = 0; x < Width; x++)
+				output.Append(_cells[x, y].Terrain.DebugSymbol);
+
+			output.AppendLine();
+		}
+
+		output.Append(
+			"Legend: # solid, B breakable, D door, . floor, " +
+			"F fire, I ice"
+		);
+		return output.ToString();
+	}
+
+	internal void SetTerrain(int x, int y, TerrainKind terrainKind)
 	{
 		DungeonCell cell = GetCell(x, y) ??
 			throw new ArgumentOutOfRangeException();
 
-		cell.Terrain = terrain;
+		cell.SetTerrain(terrainKind);
 	}
 
 	internal void SetZone(int x, int y, int zoneId)
@@ -152,7 +283,7 @@ public sealed class DungeonMap
 		DungeonCell cell = GetCell(x, y) ??
 			throw new ArgumentOutOfRangeException();
 
-		cell.Terrain = DungeonTerrain.Door;
+		cell.SetTerrain(TerrainKind.Door);
 		cell.ZoneId = -1;
 		cell.ConnectedZoneA = connectedZoneA;
 		cell.ConnectedZoneB = connectedZoneB;
