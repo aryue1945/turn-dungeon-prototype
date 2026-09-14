@@ -249,15 +249,15 @@ public sealed class DungeonMap
 			{
 				char symbol = _cells[x, y].Terrain.DebugSymbol;
 				output.Append(symbol);
-				output.Append(symbol);
+				output.Append(' ');
 			}
 
 			output.AppendLine();
 		}
 
 		output.Append(
-			"Legend: ## solid, BB breakable, DD door, .. floor, " +
-			"FF fire, II ice"
+			"Legend: # solid, B breakable, D door, . floor, " +
+			"F fire, I ice (each cell uses two columns)"
 		);
 		return output.ToString();
 	}
