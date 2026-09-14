@@ -49,17 +49,17 @@ public sealed class DungeonRenderer
 		{
 			for (int x = 0; x < map.Width; x++)
 			{
-				DungeonTerrain terrain = map.GetCell(x, y).Terrain;
+				TerrainKind terrain = map.GetCell(x, y).Terrain.Kind;
 
-				if (terrain == DungeonTerrain.Floor ||
-					terrain == DungeonTerrain.Door)
+				if (map.GetCell(x, y).IsWalkable)
 				{
 					CreateFloor(x, y);
 				}
 
-				if (terrain == DungeonTerrain.Wall)
+				if (terrain == TerrainKind.SolidWall ||
+					terrain == TerrainKind.BreakableWall)
 					CreateWall(map, x, y);
-				else if (terrain == DungeonTerrain.Door)
+				else if (terrain == TerrainKind.Door)
 					CreateDoor(x, y);
 			}
 		}
@@ -143,7 +143,8 @@ public sealed class DungeonRenderer
 	{
 		DungeonCell cell = map.GetCell(x, y);
 		return cell != null &&
-			(cell.Terrain == DungeonTerrain.Wall ||
-				cell.Terrain == DungeonTerrain.Door);
+			(cell.Terrain.Kind == TerrainKind.SolidWall ||
+				cell.Terrain.Kind == TerrainKind.BreakableWall ||
+				cell.Terrain.Kind == TerrainKind.Door);
 	}
 }
