@@ -4,37 +4,28 @@ using System.Linq;
 
 public sealed class DungeonGenerator
 {
-	private const int MinimumRoomWidth = 5;
-	private const int MinimumRoomHeight = 5;
-
-	public DungeonMap Generate(
-		int width,
-		int height,
-		int seed,
-		int targetRoomCount = 10)
+	public DungeonMap Generate(DungeonGenerationRequest request)
 	{
-		if (width < MinimumRoomWidth * 2 + 3)
-			throw new ArgumentOutOfRangeException(nameof(width));
+		Validate(request);
 
-		if (height < MinimumRoomHeight * 2 + 3)
-			throw new ArgumentOutOfRangeException(nameof(height));
-
-		if (targetRoomCount < 1)
-			throw new ArgumentOutOfRangeException(nameof(targetRoomCount));
-
-		Random random = new(seed);
-		DungeonMap map = new(width, height, seed);
+		Random random = new(request.Seed);
+		DungeonMap map = new(request.Width, request.Height, request.Seed);
 		InitializeBuilding(map);
 
 		List<DungeonRoom> rooms = new()
 		{
-			new DungeonRoom(1, 1, width - 2, height - 2)
+			new DungeonRoom(
+				1,
+				1,
+				request.Width - 2,
+				request.Height - 2
+			)
 		};
 
-		while (rooms.Count < targetRoomCount)
+		while (rooms.Count < request.TargetRoomCount)
 		{
 			List<DungeonRoom> candidates = rooms
-				.Where(CanSplit)
+				.Where(room => CanSplit(room, request))
 				.OrderByDescending(room => room.Area)
 				.ToList();
 
@@ -46,14 +37,43 @@ public sealed class DungeonGenerator
 			int roomIndex = rooms.IndexOf(room);
 
 			(DungeonRoom first, DungeonRoom second) =
-				SplitRoom(map, room, random);
+				SplitRoom(map, room, request, random);
 
 			rooms[roomIndex] = first;
 			rooms.Add(second);
 		}
 
+		AssignZones(map, rooms);
+		ConnectEveryAdjacentRoomPair(map, rooms, random);
 		map.SetRooms(rooms.AsReadOnly());
 		return map;
+	}
+
+	private static void Validate(DungeonGenerationRequest request)
+	{
+		if (request == null)
+			throw new ArgumentNullException(nameof(request));
+
+		if (request.MinimumRoomWidth < 2)
+			throw new ArgumentOutOfRangeException(
+				nameof(request.MinimumRoomWidth)
+			);
+
+		if (request.MinimumRoomHeight < 2)
+			throw new ArgumentOutOfRangeException(
+				nameof(request.MinimumRoomHeight)
+			);
+
+		if (request.Width < request.MinimumRoomWidth * 2 + 3)
+			throw new ArgumentOutOfRangeException(nameof(request.Width));
+
+		if (request.Height < request.MinimumRoomHeight * 2 + 3)
+			throw new ArgumentOutOfRangeException(nameof(request.Height));
+
+		if (request.TargetRoomCount < 1)
+			throw new ArgumentOutOfRangeException(
+				nameof(request.TargetRoomCount)
+			);
 	}
 
 	private static void InitializeBuilding(DungeonMap map)
@@ -65,39 +85,45 @@ public sealed class DungeonGenerator
 				bool isBoundary = x == 0 || y == 0 ||
 					x == map.Width - 1 || y == map.Height - 1;
 
-				map.SetCell(
+				map.SetTerrain(
 					x,
 					y,
-					isBoundary
-						? DungeonCellType.Wall
-						: DungeonCellType.Floor
+					isBoundary ? DungeonTerrain.Wall : DungeonTerrain.Floor
 				);
 			}
 		}
 	}
 
-	private static bool CanSplit(DungeonRoom room)
+	private static bool CanSplit(
+		DungeonRoom room,
+		DungeonGenerationRequest request)
 	{
-		return CanSplitVertically(room) || CanSplitHorizontally(room);
+		return CanSplitVertically(room, request) ||
+			CanSplitHorizontally(room, request);
 	}
 
-	private static bool CanSplitVertically(DungeonRoom room)
+	private static bool CanSplitVertically(
+		DungeonRoom room,
+		DungeonGenerationRequest request)
 	{
-		return room.Width >= MinimumRoomWidth * 2 + 1;
+		return room.Width >= request.MinimumRoomWidth * 2 + 1;
 	}
 
-	private static bool CanSplitHorizontally(DungeonRoom room)
+	private static bool CanSplitHorizontally(
+		DungeonRoom room,
+		DungeonGenerationRequest request)
 	{
-		return room.Height >= MinimumRoomHeight * 2 + 1;
+		return room.Height >= request.MinimumRoomHeight * 2 + 1;
 	}
 
 	private static (DungeonRoom First, DungeonRoom Second) SplitRoom(
 		DungeonMap map,
 		DungeonRoom room,
+		DungeonGenerationRequest request,
 		Random random)
 	{
-		bool canSplitVertically = CanSplitVertically(room);
-		bool canSplitHorizontally = CanSplitHorizontally(room);
+		bool canSplitVertically = CanSplitVertically(room, request);
+		bool canSplitHorizontally = CanSplitHorizontally(room, request);
 		bool splitVertically;
 
 		if (!canSplitHorizontally)
@@ -112,26 +138,24 @@ public sealed class DungeonGenerator
 			splitVertically = random.Next(2) == 0;
 
 		return splitVertically
-			? SplitVertically(map, room, random)
-			: SplitHorizontally(map, room, random);
+			? SplitVertically(map, room, request, random)
+			: SplitHorizontally(map, room, request, random);
 	}
 
 	private static (DungeonRoom, DungeonRoom) SplitVertically(
 		DungeonMap map,
 		DungeonRoom room,
+		DungeonGenerationRequest request,
 		Random random)
 	{
 		int wallOffset = random.Next(
-			MinimumRoomWidth,
-			room.Width - MinimumRoomWidth
+			request.MinimumRoomWidth,
+			room.Width - request.MinimumRoomWidth
 		);
 		int wallX = room.X + wallOffset;
 
 		for (int y = room.Y; y < room.Bottom; y++)
-			map.SetCell(wallX, y, DungeonCellType.Wall);
-
-		int doorY = random.Next(room.Y + 1, room.Bottom - 1);
-		map.SetCell(wallX, doorY, DungeonCellType.Door);
+			map.SetTerrain(wallX, y, DungeonTerrain.Wall);
 
 		return (
 			new DungeonRoom(room.X, room.Y, wallOffset, room.Height),
@@ -147,19 +171,17 @@ public sealed class DungeonGenerator
 	private static (DungeonRoom, DungeonRoom) SplitHorizontally(
 		DungeonMap map,
 		DungeonRoom room,
+		DungeonGenerationRequest request,
 		Random random)
 	{
 		int wallOffset = random.Next(
-			MinimumRoomHeight,
-			room.Height - MinimumRoomHeight
+			request.MinimumRoomHeight,
+			room.Height - request.MinimumRoomHeight
 		);
 		int wallY = room.Y + wallOffset;
 
 		for (int x = room.X; x < room.Right; x++)
-			map.SetCell(x, wallY, DungeonCellType.Wall);
-
-		int doorX = random.Next(room.X + 1, room.Right - 1);
-		map.SetCell(doorX, wallY, DungeonCellType.Door);
+			map.SetTerrain(x, wallY, DungeonTerrain.Wall);
 
 		return (
 			new DungeonRoom(room.X, room.Y, room.Width, wallOffset),
@@ -170,5 +192,113 @@ public sealed class DungeonGenerator
 				room.Height - wallOffset - 1
 			)
 		);
+	}
+
+	private static void AssignZones(
+		DungeonMap map,
+		IReadOnlyList<DungeonRoom> rooms)
+	{
+		for (int zoneId = 0; zoneId < rooms.Count; zoneId++)
+		{
+			DungeonRoom room = rooms[zoneId];
+			room.ZoneId = zoneId;
+
+			for (int y = room.Y; y < room.Bottom; y++)
+			{
+				for (int x = room.X; x < room.Right; x++)
+					map.SetZone(x, y, zoneId);
+			}
+		}
+	}
+
+	private static void ConnectEveryAdjacentRoomPair(
+		DungeonMap map,
+		IReadOnlyList<DungeonRoom> rooms,
+		Random random)
+	{
+		for (int firstIndex = 0; firstIndex < rooms.Count; firstIndex++)
+		{
+			for (
+				int secondIndex = firstIndex + 1;
+				secondIndex < rooms.Count;
+				secondIndex++
+			)
+			{
+				TryCreateSharedWallDoor(
+					map,
+					rooms[firstIndex],
+					rooms[secondIndex],
+					random
+				);
+			}
+		}
+	}
+
+	private static void TryCreateSharedWallDoor(
+		DungeonMap map,
+		DungeonRoom first,
+		DungeonRoom second,
+		Random random)
+	{
+		DungeonRoom left = first.X < second.X ? first : second;
+		DungeonRoom right = left == first ? second : first;
+
+		if (left.Right + 1 == right.X)
+		{
+			int overlapStart = Math.Max(left.Y, right.Y);
+			int overlapEnd = Math.Min(left.Bottom, right.Bottom);
+
+			if (overlapEnd > overlapStart)
+			{
+				int doorY = ChooseDoorCoordinate(
+					overlapStart,
+					overlapEnd,
+					random
+				);
+				map.SetDoor(
+					left.Right,
+					doorY,
+					left.ZoneId,
+					right.ZoneId
+				);
+				return;
+			}
+		}
+
+		DungeonRoom top = first.Y < second.Y ? first : second;
+		DungeonRoom bottom = top == first ? second : first;
+
+		if (top.Bottom + 1 != bottom.Y)
+			return;
+
+		int horizontalOverlapStart = Math.Max(top.X, bottom.X);
+		int horizontalOverlapEnd = Math.Min(top.Right, bottom.Right);
+
+		if (horizontalOverlapEnd <= horizontalOverlapStart)
+			return;
+
+		int doorX = ChooseDoorCoordinate(
+			horizontalOverlapStart,
+			horizontalOverlapEnd,
+			random
+		);
+		map.SetDoor(
+			doorX,
+			top.Bottom,
+			top.ZoneId,
+			bottom.ZoneId
+		);
+	}
+
+	private static int ChooseDoorCoordinate(
+		int overlapStart,
+		int overlapEnd,
+		Random random)
+	{
+		int length = overlapEnd - overlapStart;
+
+		return length > 2
+			? random.Next(overlapStart + 1, overlapEnd - 1)
+			: random.Next(overlapStart, overlapEnd);
 	}
 }
