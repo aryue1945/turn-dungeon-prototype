@@ -1,13 +1,14 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 public partial class Main : Node2D
 {
 	private const float TileSize = 32.0f;
 	private const int MapWidth = 24;
 	private const int MapHeight = 16;
-	private const int TargetRoomCount = 5;
+	private const int TargetZoneCount = 5;
 	private const float MinimumCameraZoom = 0.5f;
 	private const float MaximumCameraZoom = 2.0f;
 	private const float CameraZoomStep = 0.25f;
@@ -164,9 +165,7 @@ public partial class Main : Node2D
 		DungeonGenerationRequest request = new(
 			MapWidth,
 			MapHeight,
-			TargetRoomCount,
-			minimumRoomWidth: 5,
-			minimumRoomHeight: 5,
+			TargetZoneCount,
 			seed: _dungeonSeed
 		);
 		_dungeonMap = new DungeonGenerator().Generate(request);
@@ -190,13 +189,16 @@ public partial class Main : Node2D
 
 		GD.Print(
 			$"Dungeon seed: {_dungeonSeed}; " +
-			$"rooms: {_dungeonMap.Rooms.Count}."
+			$"zones: {_dungeonMap.Zones.Count}."
 		);
 	}
 
 	private void PlacePlayerInStartRoom()
 	{
-		GridPosition startCell = _dungeonMap.Rooms[0].Center;
+		DungeonZone startZone = _dungeonMap.Zones.Single(
+			zone => zone.Type == DungeonZoneType.Start
+		);
+		GridPosition startCell = startZone.Room.Center;
 		_player.Position = CellToPosition(startCell);
 		UpdatePlayerZone();
 	}
@@ -218,9 +220,13 @@ public partial class Main : Node2D
 		OnPlayerEnteredZone(zoneId);
 	}
 
-	private static void OnPlayerEnteredZone(int zoneId)
+	private void OnPlayerEnteredZone(int zoneId)
 	{
-		GD.Print($"Player entered zone {zoneId}.");
+		DungeonZone zone = _dungeonMap.GetZone(zoneId);
+		GD.Print(
+			$"Player entered zone {zoneId}: {zone.Type}, " +
+			$"template {zone.TemplateName}."
+		);
 	}
 
 	private static void OnPlayerExitedZone(int zoneId)
@@ -272,11 +278,16 @@ public partial class Main : Node2D
 			_player.Position
 		};
 
+		List<DungeonZone> combatZones = _dungeonMap.Zones
+			.Where(zone => zone.Type == DungeonZoneType.Combat)
+			.ToList();
+
+		if (combatZones.Count == 0)
+			return;
+
 		for (int i = 0; i < EnemyTypes.Length; i++)
 		{
-			DungeonRoom room = _dungeonMap.Rooms[
-				(i + 1) % _dungeonMap.Rooms.Count
-			];
+			DungeonRoom room = combatZones[i % combatZones.Count].Room;
 			GridPosition enemyCell = GetRandomSpawnCell(
 				room,
 				occupiedPositions
