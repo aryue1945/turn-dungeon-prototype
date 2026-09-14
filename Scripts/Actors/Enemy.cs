@@ -263,35 +263,17 @@ public partial class Enemy : CharacterBody2D, ICombatant
 	private void ApplyTypeDisplay()
 	{
 		Sprite2D sprite = GetNode<Sprite2D>("Sprite2D");
-		string typeLabel;
+		sprite.Texture = GD.Load<Texture2D>(GetTypeTexturePath());
+		sprite.Modulate = Colors.White;
 
-		switch (MovementType)
+		string typeLabel = MovementType switch
 		{
-			case EnemyMovementType.SlowChaser:
-				sprite.Modulate = new Color(0.2f, 0.55f, 1.0f);
-				typeLabel = "SLOW";
-				break;
-
-			case EnemyMovementType.Patroller:
-				sprite.Modulate = new Color(1.0f, 0.55f, 0.1f);
-				typeLabel = "PATROL";
-				break;
-
-			case EnemyMovementType.LeftTurner:
-				sprite.Modulate = new Color(0.2f, 0.85f, 0.35f);
-				typeLabel = "LEFT";
-				break;
-
-			case EnemyMovementType.RightTurner:
-				sprite.Modulate = new Color(1.0f, 0.3f, 0.65f);
-				typeLabel = "RIGHT";
-				break;
-
-			default:
-				sprite.Modulate = new Color(0.65f, 0.35f, 0.9f);
-				typeLabel = "STILL";
-				break;
-		}
+			EnemyMovementType.SlowChaser => "SLOW",
+			EnemyMovementType.Patroller => "PATROL",
+			EnemyMovementType.LeftTurner => "LEFT",
+			EnemyMovementType.RightTurner => "RIGHT",
+			_ => "STILL"
+		};
 
 		Label label = new()
 		{
@@ -304,6 +286,22 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		label.AddThemeFontSizeOverride("font_size", 10);
 		label.AddThemeColorOverride("font_color", Colors.White);
 		AddChild(label);
+	}
+
+	private string GetTypeTexturePath()
+	{
+		return MovementType switch
+		{
+			EnemyMovementType.SlowChaser =>
+				"res://Art/Actors/enemy_slow_chaser.png",
+			EnemyMovementType.Patroller =>
+				"res://Art/Actors/enemy_patroller.png",
+			EnemyMovementType.LeftTurner =>
+				"res://Art/Actors/enemy_left_turner.png",
+			EnemyMovementType.RightTurner =>
+				"res://Art/Actors/enemy_right_turner.png",
+			_ => "res://Art/Actors/enemy_stationary.png"
+		};
 	}
 
 	private void CreateHealthBar()

@@ -32,6 +32,7 @@ public partial class Main : Node2D
 
 	private PackedScene _enemyScene;
 	private PackedScene _wallScene;
+	private Texture2D _floorTexture;
 
 	public override void _Ready()
 	{
@@ -39,6 +40,9 @@ public partial class Main : Node2D
 
 		_enemyScene = GD.Load<PackedScene>("res://enemy.tscn");
 		_wallScene = GD.Load<PackedScene>("res://wall.tscn");
+		_floorTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_floor.png"
+		);
 
 		_random.Randomize();
 
@@ -78,6 +82,12 @@ public partial class Main : Node2D
 
 	private void CreateRoom()
 	{
+		for (int y = 1; y < RoomHeight - 1; y++)
+		{
+			for (int x = 1; x < RoomWidth - 1; x++)
+				CreateFloor(x, y);
+		}
+
 		for (int x = 0; x < RoomWidth; x++)
 		{
 			CreateWall(x, 0);
@@ -89,6 +99,17 @@ public partial class Main : Node2D
 			CreateWall(0, y);
 			CreateWall(RoomWidth - 1, y);
 		}
+	}
+
+	private void CreateFloor(int x, int y)
+	{
+		Sprite2D floor = new()
+		{
+			Texture = _floorTexture,
+			Position = CellToPosition(x, y),
+			ZIndex = -1
+		};
+		AddChild(floor);
 	}
 
 	private void CreateWall(int x, int y)
