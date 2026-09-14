@@ -103,6 +103,22 @@ public partial class Main : Node2D
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
+		if (!_gameStarted &&
+			@event is InputEventKey weaponKey &&
+			weaponKey.Pressed &&
+			!weaponKey.Echo)
+		{
+			if (weaponKey.Keycode == Key.Key1)
+				OnBasicSwordSelected();
+			else if (weaponKey.Keycode == Key.Key2)
+				OnLongSwordSelected();
+			else
+				return;
+
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
 		if (@event is InputEventMouseButton mouseButton &&
 			mouseButton.Pressed)
 		{
@@ -502,7 +518,7 @@ public partial class Main : Node2D
 		Button basicSwordButton = new()
 		{
 			CustomMinimumSize = new Vector2(208, 44),
-			Text = "Basic Sword"
+			Text = "[1] Basic Sword"
 		};
 		basicSwordButton.Pressed += OnBasicSwordSelected;
 		selectionBox.AddChild(basicSwordButton);
@@ -510,7 +526,7 @@ public partial class Main : Node2D
 		Button longSwordButton = new()
 		{
 			CustomMinimumSize = new Vector2(208, 44),
-			Text = "Long Sword"
+			Text = "[2] Long Sword"
 		};
 		longSwordButton.Pressed += OnLongSwordSelected;
 		selectionBox.AddChild(longSwordButton);
