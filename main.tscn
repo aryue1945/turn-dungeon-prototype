@@ -9,11 +9,18 @@ size = Vector2(24, 24)
 
 [node name="Main" type="Node2D" unique_id=1899355104]
 script = ExtResource("1_1bvp3")
+y_sort_enabled = true
 
 [node name="Player" type="CharacterBody2D" parent="." unique_id=84754245]
 script = ExtResource("1_0xm2m")
 
+[node name="Shadow" type="Polygon2D" parent="Player"]
+z_index = -1
+polygon = PackedVector2Array(-11, 7, -7, 4, 7, 4, 11, 7, 7, 10, -7, 10)
+color = Color(0, 0, 0, 0.35)
+
 [node name="Sprite2D" type="Sprite2D" parent="Player" unique_id=1733064919]
+offset = Vector2(0, -8)
 texture = ExtResource("2_h2yge")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="Player" unique_id=1991409769]

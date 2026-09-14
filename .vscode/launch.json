@@ -5,7 +5,7 @@
             "name": "Debug Godot Game",
             "type": "coreclr",
             "request": "launch",
-            "preLaunchTask": "test",
+            "preLaunchTask": "prepare",
             "program": "C:\\Godot_v4.7.2-stable_mono_win64\\Godot_v4.7.2-stable_mono_win64\\Godot_v4.7.2-stable_mono_win64_console.exe",
             "args": [
                 "--path",

@@ -24,7 +24,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 
 	private int _health = MaxHealth;
 	private Polygon2D _facingIndicator;
-	private ProgressBar _healthBar;
+	private Polygon2D _healthBarFill;
 	private Vector2 _facingDirection = Vector2.Down;
 	private bool _slowChaserHasPreparedMove;
 
@@ -73,7 +73,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		if (_health < 0)
 			_health = 0;
 
-		_healthBar.Value = _health;
+		UpdateHealthBar();
 		GD.Print($"{Name} health: {_health}/{MaxHealth}");
 
 		if (_health <= 0)
@@ -306,31 +306,43 @@ public partial class Enemy : CharacterBody2D, ICombatant
 
 	private void CreateHealthBar()
 	{
-		_healthBar = new ProgressBar
+		Polygon2D background = new()
 		{
-			Position = new Vector2(-16, -26),
-			Size = new Vector2(32, 7),
-			MinValue = 0,
-			MaxValue = MaxHealth,
-			Value = _health,
-			ShowPercentage = false,
-			MouseFilter = Control.MouseFilterEnum.Ignore,
+			Position = new Vector2(0, -38),
+			Polygon = new Vector2[]
+			{
+				new(-16, 0),
+				new(16, 0),
+				new(16, 5),
+				new(-16, 5)
+			},
+			Color = new Color(0.08f, 0.08f, 0.08f, 0.9f),
 			ZIndex = 3
 		};
+		AddChild(background);
 
-		StyleBoxFlat backgroundStyle = new()
+		_healthBarFill = new Polygon2D
 		{
-			BgColor = new Color(0.12f, 0.12f, 0.12f)
+			Position = new Vector2(0, -38),
+			Color = new Color(0.2f, 0.9f, 0.25f),
+			ZIndex = 4
 		};
+		AddChild(_healthBarFill);
+		UpdateHealthBar();
+	}
 
-		StyleBoxFlat fillStyle = new()
+	private void UpdateHealthBar()
+	{
+		float ratio = (float)_health / MaxHealth;
+		float rightEdge = -15 + 30 * ratio;
+
+		_healthBarFill.Polygon = new Vector2[]
 		{
-			BgColor = new Color(0.2f, 0.9f, 0.25f)
+			new(-15, 1),
+			new(rightEdge, 1),
+			new(rightEdge, 4),
+			new(-15, 4)
 		};
-
-		_healthBar.AddThemeStyleboxOverride("background", backgroundStyle);
-		_healthBar.AddThemeStyleboxOverride("fill", fillStyle);
-		AddChild(_healthBar);
 	}
 
 	private void SetFacingDirection(Vector2 direction)
