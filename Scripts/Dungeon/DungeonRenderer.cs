@@ -49,17 +49,17 @@ public sealed class DungeonRenderer
 		{
 			for (int x = 0; x < map.Width; x++)
 			{
-				DungeonCellType cell = map.GetCell(x, y);
+				DungeonTerrain terrain = map.GetCell(x, y).Terrain;
 
-				if (cell == DungeonCellType.Floor ||
-					cell == DungeonCellType.Door)
+				if (terrain == DungeonTerrain.Floor ||
+					terrain == DungeonTerrain.Door)
 				{
 					CreateFloor(x, y);
 				}
 
-				if (cell == DungeonCellType.Wall)
+				if (terrain == DungeonTerrain.Wall)
 					CreateWall(map, x, y);
-				else if (cell == DungeonCellType.Door)
+				else if (terrain == DungeonTerrain.Door)
 					CreateDoor(x, y);
 			}
 		}
@@ -141,8 +141,9 @@ public sealed class DungeonRenderer
 
 	private static bool IsDivider(DungeonMap map, int x, int y)
 	{
-		DungeonCellType cell = map.GetCell(x, y);
-		return cell == DungeonCellType.Wall ||
-			cell == DungeonCellType.Door;
+		DungeonCell cell = map.GetCell(x, y);
+		return cell != null &&
+			(cell.Terrain == DungeonTerrain.Wall ||
+				cell.Terrain == DungeonTerrain.Door);
 	}
 }
