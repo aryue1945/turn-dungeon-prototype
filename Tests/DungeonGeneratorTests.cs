@@ -15,7 +15,7 @@ public sealed class DungeonGeneratorTests
 
 		Assert.That(map.Rooms.Count, Is.EqualTo(RoomCount));
 		Assert.That(
-			CountCells(map, DungeonTerrain.Door),
+			CountCells(map, TerrainKind.Door),
 			Is.GreaterThanOrEqualTo(RoomCount - 1)
 		);
 	}
@@ -47,7 +47,7 @@ public sealed class DungeonGeneratorTests
 				{
 					DungeonCell cell = map.GetCell(position.X, position.Y);
 
-					if (cell.Terrain != DungeonTerrain.Door)
+					if (cell.Terrain.Kind != TerrainKind.Door)
 						continue;
 
 					hasDoor = DoorConnects(cell, firstRoom, secondRoom);
@@ -104,24 +104,24 @@ public sealed class DungeonGeneratorTests
 		for (int x = 0; x < map.Width; x++)
 		{
 			Assert.That(
-				map.GetCell(x, 0).Terrain,
-				Is.EqualTo(DungeonTerrain.Wall)
+				map.GetCell(x, 0).Terrain.Kind,
+				Is.EqualTo(TerrainKind.SolidWall)
 			);
 			Assert.That(
-				map.GetCell(x, map.Height - 1).Terrain,
-				Is.EqualTo(DungeonTerrain.Wall)
+				map.GetCell(x, map.Height - 1).Terrain.Kind,
+				Is.EqualTo(TerrainKind.SolidWall)
 			);
 		}
 
 		for (int y = 0; y < map.Height; y++)
 		{
 			Assert.That(
-				map.GetCell(0, y).Terrain,
-				Is.EqualTo(DungeonTerrain.Wall)
+				map.GetCell(0, y).Terrain.Kind,
+				Is.EqualTo(TerrainKind.SolidWall)
 			);
 			Assert.That(
-				map.GetCell(map.Width - 1, y).Terrain,
-				Is.EqualTo(DungeonTerrain.Wall)
+				map.GetCell(map.Width - 1, y).Terrain.Kind,
+				Is.EqualTo(TerrainKind.SolidWall)
 			);
 		}
 	}
@@ -140,8 +140,8 @@ public sealed class DungeonGeneratorTests
 				DungeonCell secondCell = second.GetCell(x, y);
 
 				Assert.That(
-					secondCell.Terrain,
-					Is.EqualTo(firstCell.Terrain)
+					secondCell.Terrain.Kind,
+					Is.EqualTo(firstCell.Terrain.Kind)
 				);
 				Assert.That(secondCell.ZoneId, Is.EqualTo(firstCell.ZoneId));
 				Assert.That(
@@ -154,6 +154,36 @@ public sealed class DungeonGeneratorTests
 				);
 			}
 		}
+	}
+
+	[Test]
+	public void DamageTerrain_BreakableWallBecomesFloor()
+	{
+		DungeonMap map = Generate(seed: 86420);
+		GridPosition wall = FindCell(map, TerrainKind.BreakableWall);
+
+		bool destroyed = map.DamageTerrain(wall.X, wall.Y, damage: 1);
+
+		Assert.That(destroyed, Is.True);
+		Assert.That(
+			map.GetCell(wall.X, wall.Y).Terrain.Kind,
+			Is.EqualTo(TerrainKind.Floor)
+		);
+		Assert.That(map.IsWalkable(wall.X, wall.Y), Is.True);
+	}
+
+	[Test]
+	public void DamageTerrain_SolidOuterWallIsNotDestroyed()
+	{
+		DungeonMap map = Generate(seed: 11223);
+
+		bool destroyed = map.DamageTerrain(0, 0, damage: 99);
+
+		Assert.That(destroyed, Is.False);
+		Assert.That(
+			map.GetCell(0, 0).Terrain.Kind,
+			Is.EqualTo(TerrainKind.SolidWall)
+		);
 	}
 
 	private static DungeonMap Generate(int seed)
@@ -216,7 +246,25 @@ public sealed class DungeonGeneratorTests
 		return positions;
 	}
 
-	private static int CountCells(DungeonMap map, DungeonTerrain terrain)
+	private static GridPosition FindCell(
+		DungeonMap map,
+		TerrainKind terrainKind)
+	{
+		for (int y = 0; y < map.Height; y++)
+		{
+			for (int x = 0; x < map.Width; x++)
+			{
+				if (map.GetCell(x, y).Terrain.Kind == terrainKind)
+					return new GridPosition(x, y);
+			}
+		}
+
+		throw new AssertionException(
+			$"No {terrainKind} cell exists in the generated map."
+		);
+	}
+
+	private static int CountCells(DungeonMap map, TerrainKind terrainKind)
 	{
 		int count = 0;
 
@@ -224,7 +272,7 @@ public sealed class DungeonGeneratorTests
 		{
 			for (int x = 0; x < map.Width; x++)
 			{
-				if (map.GetCell(x, y).Terrain == terrain)
+				if (map.GetCell(x, y).Terrain.Kind == terrainKind)
 					count++;
 			}
 		}
