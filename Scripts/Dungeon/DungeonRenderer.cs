@@ -12,6 +12,7 @@ public sealed class DungeonRenderer
 	private readonly Texture2D _wallCornerLeftTexture;
 	private readonly Texture2D _wallCornerRightTexture;
 	private readonly Texture2D _wallBarsTexture;
+	private readonly Texture2D _breakableWallTexture;
 	private readonly Texture2D _doorTexture;
 	private readonly Vector2 _origin;
 	private readonly float _tileSize;
@@ -27,6 +28,7 @@ public sealed class DungeonRenderer
 		Texture2D wallCornerLeftTexture,
 		Texture2D wallCornerRightTexture,
 		Texture2D wallBarsTexture,
+		Texture2D breakableWallTexture,
 		Texture2D doorTexture,
 		Vector2 origin,
 		float tileSize)
@@ -40,6 +42,7 @@ public sealed class DungeonRenderer
 		_wallCornerLeftTexture = wallCornerLeftTexture;
 		_wallCornerRightTexture = wallCornerRightTexture;
 		_wallBarsTexture = wallBarsTexture;
+		_breakableWallTexture = breakableWallTexture;
 		_doorTexture = doorTexture;
 		_origin = origin;
 		_tileSize = tileSize;
@@ -73,11 +76,13 @@ public sealed class DungeonRenderer
 			Track(position, CreateFloor(x, y));
 
 		if (cell.Terrain.Kind == TerrainKind.SolidWall ||
-			cell.Terrain.Kind == TerrainKind.BreakableWall)
+			cell.Terrain.Kind == TerrainKind.BreakableWall ||
+			cell.Terrain.Kind == TerrainKind.TreeWall ||
+			cell.Terrain.Kind == TerrainKind.GrowingWall)
 		{
 			Track(position, CreateWall(map, x, y));
 		}
-		else if (cell.Terrain.Kind == TerrainKind.Door)
+		else if (cell.Terrain.Kind == TerrainKind.Door && !cell.IsOpen)
 			Track(position, CreateDoor(x, y));
 	}
 
@@ -129,11 +134,26 @@ public sealed class DungeonRenderer
 	{
 		Node2D wall = _wallScene.Instantiate<Node2D>();
 		wall.Position = CellToPosition(x, y);
-		wall.GetNode<Sprite2D>("Sprite2D").Texture =
-			GetWallTexture(map, x, y);
-		wall.AddToGroup("walls");
+
+		Sprite2D sprite = wall.GetNode<Sprite2D>("Sprite2D");
+		sprite.Texture = GetWallTexture(map, x, y);
+		sprite.Modulate = GetWallModulate(map.GetCell(x, y).Terrain.Kind);
+
 		_root.AddChild(wall);
 		return wall;
+	}
+
+	// Tree/growing walls share the breakable wall's brick sprite (see
+	// GetWallTexture) and are told apart from it and each other purely by
+	// tint until they get dedicated art.
+	private static Color GetWallModulate(TerrainKind kind)
+	{
+		return kind switch
+		{
+			TerrainKind.TreeWall => new Color(0.55f, 0.85f, 0.45f),
+			TerrainKind.GrowingWall => new Color(0.62f, 0.55f, 0.95f),
+			_ => Colors.White
+		};
 	}
 
 	private Node2D CreateDoor(int x, int y)
@@ -151,6 +171,15 @@ public sealed class DungeonRenderer
 
 	private Texture2D GetWallTexture(DungeonMap map, int x, int y)
 	{
+		TerrainKind kind = map.GetCell(x, y).Terrain.Kind;
+
+		if (kind == TerrainKind.BreakableWall ||
+			kind == TerrainKind.TreeWall ||
+			kind == TerrainKind.GrowingWall)
+		{
+			return _breakableWallTexture;
+		}
+
 		bool isLeft = x == 0;
 		bool isRight = x == map.Width - 1;
 		bool isTop = y == 0;
@@ -187,6 +216,8 @@ public sealed class DungeonRenderer
 		return cell != null &&
 			(cell.Terrain.Kind == TerrainKind.SolidWall ||
 				cell.Terrain.Kind == TerrainKind.BreakableWall ||
+				cell.Terrain.Kind == TerrainKind.TreeWall ||
+				cell.Terrain.Kind == TerrainKind.GrowingWall ||
 				cell.Terrain.Kind == TerrainKind.Door);
 	}
 }

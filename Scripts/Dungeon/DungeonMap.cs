@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 
 public enum TerrainKind
@@ -8,6 +9,8 @@ public enum TerrainKind
 	Floor,
 	SolidWall,
 	BreakableWall,
+	TreeWall,
+	GrowingWall,
 	Door,
 	Fire,
 	Ice
@@ -22,6 +25,7 @@ public sealed class TerrainDefinition
 	public int MaxDurability { get; }
 	public int ContactDamage { get; }
 	public TerrainKind? DestroyedInto { get; }
+	public int? RegrowAfterTurns { get; }
 	public bool IsDestructible =>
 		MaxDurability > 0 && DestroyedInto.HasValue;
 
@@ -32,7 +36,8 @@ public sealed class TerrainDefinition
 		bool isWalkable,
 		int maxDurability = 0,
 		int contactDamage = 0,
-		TerrainKind? destroyedInto = null)
+		TerrainKind? destroyedInto = null,
+		int? regrowAfterTurns = null)
 	{
 		Kind = kind;
 		Name = name;
@@ -41,6 +46,7 @@ public sealed class TerrainDefinition
 		MaxDurability = maxDurability;
 		ContactDamage = contactDamage;
 		DestroyedInto = destroyedInto;
+		RegrowAfterTurns = regrowAfterTurns;
 	}
 }
 
@@ -67,6 +73,23 @@ public static class TerrainCatalog
 			TerrainKind.BreakableWall,
 			"Breakable Wall",
 			'B',
+			isWalkable: false,
+			maxDurability: 1,
+			destroyedInto: TerrainKind.Floor
+		),
+		[TerrainKind.TreeWall] = new(
+			TerrainKind.TreeWall,
+			"Tree Wall",
+			'T',
+			isWalkable: false,
+			maxDurability: 1,
+			destroyedInto: TerrainKind.Floor,
+			regrowAfterTurns: 3
+		),
+		[TerrainKind.GrowingWall] = new(
+			TerrainKind.GrowingWall,
+			"Growing Wall",
+			'G',
 			isWalkable: false,
 			maxDurability: 1,
 			destroyedInto: TerrainKind.Floor
@@ -111,6 +134,12 @@ public sealed class DungeonCell
 	public int ConnectedZoneA { get; internal set; } = -1;
 	public int ConnectedZoneB { get; internal set; } = -1;
 	public bool IsWalkable => Terrain.IsWalkable;
+	public bool IsOpen { get; private set; }
+	public int? PendingRegrowTurns =>
+		_regrowingKind.HasValue ? _regrowTurnsRemaining : null;
+
+	private TerrainKind? _regrowingKind;
+	private int _regrowTurnsRemaining;
 
 	internal DungeonCell(GridPosition position)
 	{
@@ -122,6 +151,18 @@ public sealed class DungeonCell
 	{
 		Terrain = TerrainCatalog.Get(terrainKind);
 		Durability = Terrain.MaxDurability;
+		IsOpen = false;
+		_regrowingKind = null;
+		_regrowTurnsRemaining = 0;
+	}
+
+	internal bool Open()
+	{
+		if (Terrain.Kind != TerrainKind.Door || IsOpen)
+			return false;
+
+		IsOpen = true;
+		return true;
 	}
 
 	internal bool DamageTerrain(int damage)
@@ -134,7 +175,38 @@ public sealed class DungeonCell
 		if (Durability > 0)
 			return false;
 
-		SetTerrain(Terrain.DestroyedInto.Value);
+		TerrainDefinition destroyedTerrain = Terrain;
+		SetTerrain(destroyedTerrain.DestroyedInto.Value);
+
+		if (destroyedTerrain.RegrowAfterTurns.HasValue)
+		{
+			_regrowingKind = destroyedTerrain.Kind;
+			_regrowTurnsRemaining = destroyedTerrain.RegrowAfterTurns.Value;
+		}
+
+		return true;
+	}
+
+	// Called once per game turn. Counts down while the cell sits empty and
+	// converts back once the timer expires, unless an actor is currently
+	// standing on the cell (never regrow a wall on top of someone).
+	internal bool TickRegrowth(bool isOccupied)
+	{
+		if (_regrowingKind == null)
+			return false;
+
+		if (_regrowTurnsRemaining > 0)
+			_regrowTurnsRemaining--;
+
+		if (_regrowTurnsRemaining > 0)
+			return false;
+
+		if (isOccupied)
+			return false;
+
+		TerrainKind regrownKind = _regrowingKind.Value;
+		_regrowingKind = null;
+		SetTerrain(regrownKind);
 		return true;
 	}
 }
@@ -215,9 +287,23 @@ public sealed class DungeonGenerationRequest
 
 public sealed class DungeonMap
 {
+	// How often (in game turns) a GrowingWall cell attempts to spread into
+	// one adjacent floor cell. One spread per interval keeps it "slow".
+	private const int GrowthIntervalTurns = 4;
+
+	private static readonly GridPosition[] GrowthDirections =
+	{
+		new(1, 0),
+		new(-1, 0),
+		new(0, 1),
+		new(0, -1)
+	};
+
 	private readonly DungeonCell[,] _cells;
+	private readonly Random _terrainRandom;
 	private IReadOnlyList<DungeonRoom> _rooms = Array.Empty<DungeonRoom>();
 	private IReadOnlyList<DungeonZone> _zones = Array.Empty<DungeonZone>();
+	private int _turnCounter;
 
 	public int Width { get; }
 	public int Height { get; }
@@ -237,6 +323,7 @@ public sealed class DungeonMap
 		Height = height;
 		Seed = seed;
 		_cells = new DungeonCell[width, height];
+		_terrainRandom = new Random(seed);
 
 		for (int y = 0; y < height; y++)
 		{
@@ -280,6 +367,87 @@ public sealed class DungeonMap
 		return cell != null && cell.DamageTerrain(damage);
 	}
 
+	public bool OpenDoor(int x, int y)
+	{
+		DungeonCell cell = GetCell(x, y);
+		return cell != null && cell.Open();
+	}
+
+	// Advances destroyed-terrain regrowth timers and, occasionally, spreads
+	// GrowingWall cells. Call once per completed game turn. occupiedCells
+	// prevents regrowth or growth from ever landing on an actor. Returns the
+	// cells whose terrain changed, so the caller can refresh their visuals.
+	public IReadOnlyList<GridPosition> AdvanceTurn(
+		IReadOnlyCollection<GridPosition> occupiedCells)
+	{
+		List<GridPosition> changedCells = new();
+		_turnCounter++;
+
+		for (int y = 0; y < Height; y++)
+		{
+			for (int x = 0; x < Width; x++)
+			{
+				DungeonCell cell = _cells[x, y];
+
+				if (cell.TickRegrowth(occupiedCells.Contains(cell.Position)))
+					changedCells.Add(cell.Position);
+			}
+		}
+
+		if (_turnCounter % GrowthIntervalTurns == 0)
+		{
+			GridPosition? grownCell = TryGrowOneWall(occupiedCells);
+
+			if (grownCell.HasValue)
+				changedCells.Add(grownCell.Value);
+		}
+
+		return changedCells;
+	}
+
+	private GridPosition? TryGrowOneWall(
+		IReadOnlyCollection<GridPosition> occupiedCells)
+	{
+		List<DungeonCell> growingCells = new();
+
+		for (int y = 0; y < Height; y++)
+		{
+			for (int x = 0; x < Width; x++)
+			{
+				if (_cells[x, y].Terrain.Kind == TerrainKind.GrowingWall)
+					growingCells.Add(_cells[x, y]);
+			}
+		}
+
+		if (growingCells.Count == 0)
+			return null;
+
+		DungeonCell source = growingCells[_terrainRandom.Next(growingCells.Count)];
+		List<GridPosition> shuffledDirections = GrowthDirections
+			.OrderBy(_ => _terrainRandom.Next())
+			.ToList();
+
+		foreach (GridPosition direction in shuffledDirections)
+		{
+			DungeonCell target = GetCell(
+				source.Position.X + direction.X,
+				source.Position.Y + direction.Y
+			);
+
+			if (target == null ||
+				target.Terrain.Kind != TerrainKind.Floor ||
+				occupiedCells.Contains(target.Position))
+			{
+				continue;
+			}
+
+			target.SetTerrain(TerrainKind.GrowingWall);
+			return target.Position;
+		}
+
+		return null;
+	}
+
 	public string ToDebugString()
 	{
 		StringBuilder output = new();
@@ -299,8 +467,8 @@ public sealed class DungeonMap
 		}
 
 		output.Append(
-			"Legend: # solid, B breakable, D door, . floor, " +
-			"F fire, I ice (each cell uses two columns)"
+			"Legend: # solid, B breakable, T tree, G growing, D door, " +
+			". floor, F fire, I ice (each cell uses two columns)"
 		);
 
 		foreach (DungeonZone zone in Zones)

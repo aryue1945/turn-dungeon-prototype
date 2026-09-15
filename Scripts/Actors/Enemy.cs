@@ -1,4 +1,5 @@
 using Godot;
+using System;
 using System.Collections.Generic;
 
 public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
@@ -11,6 +12,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	private Label _healthLabel;
 	private Vector2 _facingDirection = Vector2.Down;
 	private IEnemyMovementBehavior _movementBehavior;
+	private Func<Vector2, bool> _isWallAt;
 
 	public MonsterDefinition Definition { get; private set; }
 	public bool IsAlive =>
@@ -26,7 +28,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	// _Ready). Everything the definition drives - health, sprite, movement
 	// behavior, attack - is resolved here instead of being hard-coded, so a
 	// modded MonsterDefinition works exactly like a built-in one.
-	public void Configure(MonsterDefinition definition)
+	public void Configure(MonsterDefinition definition, Func<Vector2, bool> isWallAt)
 	{
 		Definition = definition;
 		_movementBehavior = EnemyMovementBehaviors.Create(definition.MovementBehaviorId);
@@ -34,6 +36,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		_maxHealth = definition.Health;
 		Attack = new AttackState(definition.PrimaryAttack);
 		_facingDirection = _movementBehavior.InitialFacingDirection;
+		_isWallAt = isWallAt;
 	}
 
 	public override void _Ready()
@@ -136,7 +139,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 				_facingDirection,
 				Attack,
 				combatants,
-				IsWallAt
+				_isWallAt
 			);
 
 		if (attackResult != AttackTurnResult.NoAttack)
@@ -154,7 +157,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		Vector2 nextPosition =
 			Position + _facingDirection * TileSize;
 
-		if (IsWallAt(nextPosition) ||
+		if (_isWallAt(nextPosition) ||
 			occupiedEnemyPositions.Contains(nextPosition))
 		{
 			return EnemyMoveResult.Blocked;
@@ -211,19 +214,5 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	private void UpdateFacingIndicatorRotation()
 	{
 		_facingIndicator.Rotation = _facingDirection.Angle();
-	}
-
-	private bool IsWallAt(Vector2 position)
-	{
-		foreach (Node node in GetTree().GetNodesInGroup("walls"))
-		{
-			if (node is Node2D wall &&
-				wall.Position.IsEqualApprox(position))
-			{
-				return true;
-			}
-		}
-
-		return false;
 	}
 }

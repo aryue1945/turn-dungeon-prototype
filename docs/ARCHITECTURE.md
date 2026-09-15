@@ -15,15 +15,15 @@ DungeonMap, DungeonGenerator, and ZoneTemplate are engine-independent.
 AttackResolver is separated from actor classes through ICombatant,
 but combat positions use Godot Vector2 pixel coordinates.
 
-DungeonRenderer creates visuals from map data once.
-Enemies still use rendered wall nodes for terrain blocking.
+DungeonRenderer creates visuals from map data once and can refresh
+individual cells (destroyed walls, opened doors) after generation.
+Player and enemies both query DungeonMap for terrain blocking.
 
 ## Main problem
 
 Gameplay has multiple spatial authorities:
 
-- DungeonMap for player walkability.
-- Scene wall nodes for enemy blocking.
+- DungeonMap for terrain walkability (now shared by player and enemies).
 - Actor node positions for occupancy and attacks.
 
 Terrain changes and animation require one authoritative game state.
@@ -88,6 +88,21 @@ Both factions query it for movement and attack blocking.
 Door opening and destruction return changed cell coordinates.
 DungeonRenderer refreshes those cells and affected visual neighbors.
 
+Some terrain can change on its own: `DungeonMap.AdvanceTurn` counts
+down destroyed regrowable terrain (tree walls) and converts a cell
+back once its timer expires, deferring if an actor currently occupies
+that cell; every few calls it also spreads one growing-wall cell into
+one adjacent floor cell, never onto an occupied one. It returns the
+changed cells so a caller can refresh just those through
+DungeonRenderer, the same pattern used for digging and door-opening.
+
+This is currently disabled: no zone template places a TreeWall or
+GrowingWall cell, and Main does not call AdvanceTurn. The mechanic
+stays covered by Tests/DynamicTerrainTests.cs, which builds small maps
+directly rather than through generation. Re-enabling it means adding
+a template symbol for each kind and calling AdvanceTurn once per
+completed turn again.
+
 Zone connections describe generated layout.
 Actual traversal depends on current cells.
 
@@ -126,7 +141,9 @@ Long-term compatibility across generator versions is not guaranteed.
 
 ## Migration
 
-1. Remove enemy scene-based terrain queries.
+1. ~~Remove enemy scene-based terrain queries.~~ Done: Enemy takes a
+   DungeonMap-backed wall-query delegate from Main instead of scanning
+   a "walls" scene group.
 2. Introduce authoritative actor grid state.
 3. Convert combat to grid coordinates.
 4. Extract turn execution and enemy decisions.

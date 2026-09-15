@@ -5,7 +5,7 @@
 [sub_resource type="RectangleShape2D" id="RectangleShape2D_dso37"]
 size = Vector2(24, 24)
 
-[node name="Wall" type="StaticBody2D" unique_id=1899974467 groups=["walls"]]
+[node name="Wall" type="StaticBody2D" unique_id=1899974467]
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1637253347]
 offset = Vector2(0, -8)
 texture = ExtResource("1_xxgf6")
