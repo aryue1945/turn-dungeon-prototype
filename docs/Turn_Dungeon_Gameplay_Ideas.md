@@ -1,5 +1,10 @@
 # Turn Dungeon – Gameplay Ideas
 
+Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (UTC). Implemented status is based on source inspection. This file is an exploratory backlog, not an implementation checklist. [Next steps](NEXT_STEPS.md) is the current work order.
+
+Implemented foundation: connected zones on a shared grid, walkable doors that open visually on actor occupancy, shovel digging and distinct breakable walls, plus data-driven monster mods. Enemies can cross passages but lack obstacle-aware navigation. Tree/growing-wall experiments exist in code/tests and remain disabled. Meteors, switches and the other puzzle systems below are ideas.
+
+
 ## Core Direction
 
 The game uses a grid-based, turn-driven dungeon system:
@@ -248,7 +253,7 @@ The interesting gameplay comes from systems interacting rather than from creatin
 
 ## Interconnected Dungeon Design
 
-The dungeon should eventually behave as one larger space instead of a chain of isolated combat rooms.
+The dungeon already uses one shared grid of connected rooms. The ideas below expand movement, navigation and environmental interaction across that space.
 
 Important possibilities:
 
@@ -367,17 +372,15 @@ The goal is not to remove the familiar turn-based foundation. The goal is to bui
 
 Do not implement all of these mechanics immediately.
 
-Recommended order:
+The current implementation order is maintained in [Next steps](NEXT_STEPS.md):
 
-1. Finish stable room connectivity.
-2. Add doors.
-3. Add destructible terrain.
-4. Allow enemies to navigate between connected rooms.
-5. Create a generic environment-turn system.
-6. Implement one timed hazard, such as meteor strikes.
-7. Implement one changing-terrain mechanic, such as regenerating walls.
-8. Build a few hand-authored test rooms combining those systems.
-9. Evaluate whether the interactions are fun before expanding the mechanic list.
-10. Only then integrate these mechanics into procedural generation.
+1. Extract authoritative actor state and complete-turn execution while preserving existing rules and behavior IDs.
+2. Add the last 10 turns of independent 2D-grid snapshots and JSON debug export for human/AI inspection.
+3. Add current-run save/resume with full state, including enemy intent and mutated terrain.
+4. Make encounters reproducible and tighten mod identity/compatibility handling.
+5. Establish floor objectives, then test one timed hazard or revisit one changing-wall experiment in hand-authored maps.
+6. Integrate a mechanic into procedural generation only after validating its timing, accessibility and save/debug behavior.
+
+The environment phase above is proposed, not active. It should run once before the completed-turn snapshot if enabled. Do not build a generic environment framework merely to support this ideas list.
 
 A small number of interacting systems is more useful than many isolated gimmicks.

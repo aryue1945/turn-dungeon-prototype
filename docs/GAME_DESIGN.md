@@ -1,6 +1,6 @@
 # Game Design
 
-Status: proposed direction. Unimplemented rules are identified below.
+Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (UTC). Implemented status is based on source inspection. Planned features are labeled below.
 
 ## Core experience
 
@@ -24,7 +24,7 @@ Variable room sizes and more layout variety are later improvements.
 
 Current behavior to preserve during refactoring:
 
-- Directional input attempts an attack before movement.
+- Directional input tries attack, then adjacent digging, then movement or a wall bump.
 - A blocked movement attempt consumes a turn.
 - Enemies act sequentially after the player.
 - Defeated enemies do not act.
@@ -45,10 +45,14 @@ Current weapons:
 - Long Sword: up to two cells forward, hitting the nearest valid target.
 - Both currently deal one damage and stop at walls.
 
+The player has a separate Basic Shovel with terrain damage 1. Weapon selection uses Up/Down and Enter/Space, number keys 1/2, or mouse; the first button receives focus. The two swords and shovel are independent equipment definitions.
+
 Add one weapon at a time with a distinct tactical use.
 Define blocking and target priority when introducing non-linear patterns.
 
 ## Enemies
+
+Monsters are data definitions with stable IDs. Built-in and JSON-modded monsters share the same actor scene and registered movement behaviors; see [Modding](MODDING.md). Only the first configured attack currently executes.
 
 Preserve the current five behaviors during architecture changes:
 
@@ -68,8 +72,7 @@ Current:
 - Solid walls block movement.
 - Breakable walls have durability, render with a distinct brick
   texture, and can be dug to destruction (becoming floor).
-- Doors are walkable and disappear once an actor steps onto them, but
-  have no closed state that blocks movement beforehand.
+- Doors have an IsOpen flag and disappear once the player or an enemy occupies them. They are walkable and do not block attacks even before opening; IsOpen currently controls the graphic.
 - Fire and ice are reserved definitions without implemented interactions.
 
 Disabled for now (implemented but not spawned or ticked, see
@@ -78,15 +81,14 @@ destroyed, and growing walls that slowly spread into neighboring
 floor cells. The concept is worth revisiting; the current shape just
 isn't right yet.
 
-Proposed first implementation:
+Behavior to preserve:
 
-- Entering a closed door opens it and moves into its cell in one action.
-- An open door displays as a passage.
-- Digging damages an adjacent breakable wall and consumes a turn.
-- Digging does not move the player.
-- A destroyed wall becomes floor.
-- Enemies can traverse open doors and destroyed walls.
-- Enemy door-opening and digging abilities are not included initially.
+- Digging damages adjacent destructible terrain, consumes a turn, and does not move the player.
+- Destroyed ordinary breakable walls become floor.
+- Enemies can traverse doors and destroyed walls; they do not dig.
+- Both player and enemy occupancy opens a door visually in the same turn.
+
+Blocking/locked doors and enemy permissions are deferred gameplay decisions. Do not add blocked-door behavior as part of state extraction.
 
 ## Run completion
 
@@ -95,6 +97,14 @@ Current prototype: defeating all enemies wins.
 Planned: separate room clearing, floor exit, and run completion.
 The exit should become an explicit gameplay objective.
 Its unlock condition will be decided when floor transitions are built.
+
+## Resume and debugging (planned)
+
+Players should be able to close the game and continue the current run. Save a complete state at stable turn boundaries, including enemy intent and changed terrain, with a backup for recovery.
+
+Separately, retain the last 10 completed gameplay turns plus their starting state as independent 2D-grid snapshots. An Export Debug History action should produce one JSON file with the sequence, commands, actor health/facing/intent, and ordered outcomes for human or AI inspection.
+
+This is diagnostic history, not ten prior floors and not a player rewind mechanic. It must remain available after death or victory until restart. See [Save and debug history](SAVE_AND_DEBUG_HISTORY.md). Neither feature is implemented yet.
 
 ## Progression
 
@@ -121,7 +131,7 @@ Narrative details remain open.
 
 ## Deferred decisions
 
-- Final weapon roster and equipment slots.
+- Final weapon roster and additional equipment slots beyond weapon plus digging tool.
 - Enemy activation or awareness outside the player's room.
 - Exit requirements.
 - Permanent stat upgrades versus content unlocks.
