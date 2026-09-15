@@ -7,8 +7,9 @@ Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (
 | Source | Responsibility and remaining coupling |
 | --- | --- |
 | `Scripts/Game/Main.cs` | Builds map, actors, mod spawn pool, UI and camera; executes player/enemy turns; handles digging, door refresh, victory and restart. |
-| `Scripts/Actors/Player.cs` | Godot input, health, weapon/tool state, pixel movement and facing display. |
-| `Scripts/Actors/Enemy.cs` | Holds monster definition and behavior instance; health, attack execution, pixel movement, labels, facing and QueueFree lifecycle. |
+| `Scripts/Actors/Player.cs` | Godot input, weapon/tool state, facing display; owns an `ActorState` (GridPosition, health) and keeps its pixel Position synced from it via `PlaceAt`/`Move`. |
+| `Scripts/Actors/ActorState.cs` | Engine-independent GridPosition and health for one actor. Player treats an instance as authoritative; Enemy does not use it yet. No instance ID, facing, equipment or attack/behavior state - see target shape below. |
+| `Scripts/Actors/Enemy.cs` | Holds monster definition and behavior instance; health, attack execution, pixel movement, labels, facing and QueueFree lifecycle. Still fully node-based. |
 | `Scripts/Dungeon/DungeonMap.cs` | Engine-independent cells, integer GridPosition, zones, durability, IsOpen, and disabled dynamic terrain timers/randomness. |
 | `Scripts/Dungeon/DungeonGenerator.cs`, `ZoneTemplate.cs` | Seeded connected layout and transformed room templates. |
 | `Scripts/Dungeon/DigResolver.cs` | Engine-independent tool damage against destructible terrain. |
@@ -20,7 +21,7 @@ Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (
 
 Terrain queries are already unified: Main injects its DungeonMap-backed IsWallAt delegate into Enemy.Configure. Do not reintroduce scene-wall scanning.
 
-Digging, door visual removal, changed-cell rendering, and keyboard weapon selection are implemented. The remaining core problem is actor and turn state living in nodes, not missing map infrastructure.
+Digging, door visual removal, changed-cell rendering, and keyboard weapon selection are implemented. Player's GridPosition and health now live in `ActorState`, not just node fields; Enemy's do not yet, and combat/occupancy (`ICombatant.Position`, `AttackResolver`, `Main`'s enemy occupancy sets) still work entirely in pixel `Vector2`. The remaining core problem is actor and turn state living in nodes, not missing map infrastructure.
 
 ## State authority and target responsibilities
 
@@ -29,7 +30,7 @@ The live source of truth will be ordinary in-memory C# objects. JSON is the stor
 | Component | Target responsibility |
 | --- | --- |
 | GameState | Map, actors, stable execution order, turn number, run status, and run configuration/seed references. |
-| ActorState | Unique instance ID, definition ID, integer position, health, facing, equipment, attack preparation and enemy behavior state. |
+| ActorState | Unique instance ID, definition ID, integer position, health, facing, equipment, attack preparation and enemy behavior state. Player currently has a first slice (GridPosition, health only); Enemy, instance IDs, facing, equipment and attack/behavior state are not migrated yet. |
 | TurnResolver | Validate commands and execute complete turns; return structured outcomes and changed actor/cell IDs. |
 | Existing movement behaviors | Retain behavior IDs/factories, migrate decisions to state and explicit outcomes. Remove Player/node/visual dependencies. Do not add a competing EnemyBrain registry. |
 | AttackResolver / DigResolver | Apply combat and digging rules against authoritative state. |
@@ -98,13 +99,13 @@ The map seed currently reproduces generation only. Main's random spawn positions
 
 ## Migration order
 
-Completed: shared map blocking, digging/tool separation, cell refresh, door opening graphics, keyboard weapon menu, monster definitions and reusable behaviors.
+Completed: shared map blocking, digging/tool separation, cell refresh, door opening graphics, keyboard weapon menu, monster definitions and reusable behaviors, Player's GridPosition/health extracted into ActorState.
 
-Next: integer actor state and grid combat; extract complete turns using the existing behavior registry; capture snapshots and 10-turn history; implement versioned run save/resume. Keep gameplay rules unchanged throughout. See [Next steps](NEXT_STEPS.md).
+Next: give Enemy the same ActorState treatment, then convert `ICombatant`/`AttackResolver` and Main's occupancy/wall queries from pixel `Vector2` to `GridPosition`; extract complete turns using the existing behavior registry; capture snapshots and 10-turn history; implement versioned run save/resume. Keep gameplay rules unchanged throughout. See [Next steps](NEXT_STEPS.md).
 
 ## Verification and deferred work
 
-There are 29 test methods: generator/terrain 8, weapon 6, digging 3, dynamic terrain 4, mod loader 8. Source inspection only in this documentation review; no test execution claim.
+There are 35 test methods: generator/terrain 8, weapon 6, digging 3, dynamic terrain 4, mod loader 8, ActorState 6. Source inspection only in this documentation review; no test execution claim.
 
 Highest-value additions: full turns/death/order, chaser intent, grid/visual independence, snapshot copy isolation, history rollover, save/load next-turn equivalence, terrain restoration, mod compatibility and failed-save backup recovery. Use small Godot checks for focus, door art and loading views.
 

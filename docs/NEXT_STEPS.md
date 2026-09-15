@@ -12,13 +12,17 @@ This roadmap separates completed foundation work from planned changes. Save/resu
 - Door IsOpen state and visual removal for player/enemy occupancy; doors remain walkable before opening.
 - Keyboard weapon selection with initial focus, arrow neighbors, confirm and 1/2 shortcuts.
 - Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods.
-- 29 test methods covering generation, weapons, digging, disabled dynamic terrain, and mod loading.
+- 35 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, and ActorState.
 
 Tree/growing walls remain disabled in generation and the turn loop. Do not re-enable them incidentally. Full turns, save/load and debug export have no implementation or tests yet.
 
-## 1. Authoritative actor state and grid combat
+## 1. Authoritative actor state and grid combat (in progress)
 
 Add ActorState and GameState with instance IDs, GridPosition, health, facing, equipment and attack/behavior state. Convert combat and occupancy to cells. Preserve existing monster IDs and behavior factories; add stable weapon/tool IDs.
+
+Done: `Scripts/Actors/ActorState.cs` (GridPosition + health, engine-independent, unit tested). Player owns one as its authoritative source; `PlaceAt`/`Move` keep its pixel Position in sync from it, and Main reads `Player.GridPosition` instead of re-deriving it from pixels for zone tracking and dig-target selection.
+
+Remaining: give Enemy the same treatment; add instance IDs, facing, equipment and attack/behavior state to ActorState; convert `ICombatant`/`AttackResolver` and Main's enemy-occupancy/wall queries from pixel `Vector2` to `GridPosition`; add stable weapon/tool IDs; introduce GameState.
 
 Acceptance: rules no longer read node positions; views derive positions from state; definitions remain separate from runtime data; a slow chaser's prepared move can be captured explicitly.
 

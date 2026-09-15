@@ -216,13 +216,13 @@ public partial class Main : Node2D
 			zone => zone.Type == DungeonZoneType.Start
 		);
 		GridPosition startCell = startZone.Room.Center;
-		_player.Position = CellToPosition(startCell);
+		_player.PlaceAt(startCell, CellToPosition(startCell));
 		UpdatePlayerZone();
 	}
 
 	private void UpdatePlayerZone()
 	{
-		GridPosition cell = PositionToCell(_player.Position);
+		GridPosition cell = _player.GridPosition;
 		int zoneId = _dungeonMap.GetZoneId(cell.X, cell.Y);
 
 		// A door belongs to both neighboring zones, so retain the
@@ -673,7 +673,10 @@ public partial class Main : Node2D
 
 		if (attackResult == AttackTurnResult.NoAttack)
 		{
-			GridPosition targetCell = PositionToCell(targetPosition);
+			GridPosition targetCell = new(
+				_player.GridPosition.X + (int)direction.X,
+				_player.GridPosition.Y + (int)direction.Y
+			);
 			DigResult digResult = DigResolver.TryDig(
 				_dungeonMap,
 				targetCell,
