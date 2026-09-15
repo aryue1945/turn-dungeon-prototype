@@ -68,17 +68,15 @@ Current:
 - Solid walls block movement.
 - Breakable walls have durability, render with a distinct brick
   texture, and can be dug to destruction (becoming floor).
-- Tree walls are destructible like breakable walls, but the cell
-  regrows the tree three turns after destruction, unless an actor is
-  standing on it when the timer expires (regrowth then waits until
-  the cell is clear).
-- Growing walls are destructible, and roughly every four turns one
-  existing growing-wall cell spreads into one adjacent floor cell,
-  never onto an occupied one. Cutting them back only slows the
-  spread; it does not stop it while any growing-wall cell survives.
 - Doors are walkable and disappear once an actor steps onto them, but
   have no closed state that blocks movement beforehand.
 - Fire and ice are reserved definitions without implemented interactions.
+
+Disabled for now (implemented but not spawned or ticked, see
+ARCHITECTURE.md): tree walls that regrow a few turns after being
+destroyed, and growing walls that slowly spread into neighboring
+floor cells. The concept is worth revisiting; the current shape just
+isn't right yet.
 
 Proposed first implementation:
 

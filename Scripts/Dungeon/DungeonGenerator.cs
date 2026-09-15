@@ -294,16 +294,10 @@ public sealed class DungeonGenerator
 						rotation,
 						mirrored
 					);
-					TerrainKind terrain = symbol switch
-					{
-						ZoneTemplate.BreakableWallSymbol =>
-							TerrainKind.BreakableWall,
-						ZoneTemplate.TreeWallSymbol =>
-							TerrainKind.TreeWall,
-						ZoneTemplate.GrowingWallSymbol =>
-							TerrainKind.GrowingWall,
-						_ => TerrainKind.Floor
-					};
+					TerrainKind terrain = symbol ==
+						ZoneTemplate.BreakableWallSymbol
+						? TerrainKind.BreakableWall
+						: TerrainKind.Floor;
 
 					map.SetTerrain(mapX, mapY, terrain);
 					map.SetZone(mapX, mapY, zone.Id);

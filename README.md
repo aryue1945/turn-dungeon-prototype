@@ -46,12 +46,6 @@ there is no closed/open state that blocks movement beforehand.
 Breakable walls render with a distinct brick texture; digging damages
 and eventually destroys them, turning the cell to floor.
 
-Two combat-zone wall types make terrain change during a run: tree
-walls regrow three turns after being destroyed (unless an actor is
-standing on the cell), and growing walls slowly spread into
-neighboring floor cells over time. Both are destructible with the
-same digging/attack path as breakable walls.
-
 ## Development setup
 
 The current project declares Godot.NET.Sdk 4.7.2 and targets .NET 8

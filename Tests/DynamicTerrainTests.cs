@@ -1,19 +1,21 @@
 using NUnit.Framework;
 using System.Collections.Generic;
 
+// TreeWall/GrowingWall are implemented in DungeonMap (regrowth and slow
+// spread) but are currently disabled: no zone template places them, and
+// Main no longer calls DungeonMap.AdvanceTurn. These tests build small maps
+// directly so the dormant mechanic stays covered and ready to re-enable
+// (wire a template symbol to it and call AdvanceTurn once per turn again).
 [TestFixture]
 public sealed class DynamicTerrainTests
 {
-	private const int Width = 24;
-	private const int Height = 16;
-	private const int ZoneCount = 5;
+	private const int Size = 5;
 	private static readonly HashSet<GridPosition> NoOccupants = new();
 
 	[Test]
 	public void DestroyedTreeWallRegrowsAfterThreeUnoccupiedTurns()
 	{
-		DungeonMap map = Generate(seed: 1);
-		GridPosition tree = FindCell(map, TerrainKind.TreeWall);
+		DungeonMap map = CreateMapWithTerrain(TerrainKind.TreeWall, out GridPosition tree);
 
 		map.DamageTerrain(tree.X, tree.Y, damage: 1);
 		Assert.That(
@@ -40,8 +42,7 @@ public sealed class DynamicTerrainTests
 	[Test]
 	public void RegrowthWaitsWhileAnActorOccupiesTheCell()
 	{
-		DungeonMap map = Generate(seed: 1);
-		GridPosition tree = FindCell(map, TerrainKind.TreeWall);
+		DungeonMap map = CreateMapWithTerrain(TerrainKind.TreeWall, out GridPosition tree);
 		HashSet<GridPosition> occupied = new() { tree };
 
 		map.DamageTerrain(tree.X, tree.Y, damage: 1);
@@ -66,8 +67,7 @@ public sealed class DynamicTerrainTests
 	[Test]
 	public void GrowingWallSpreadsIntoAnAdjacentFloorCellOverTime()
 	{
-		DungeonMap map = Generate(seed: 0);
-		GridPosition growingWall = FindCell(map, TerrainKind.GrowingWall);
+		DungeonMap map = CreateMapWithTerrain(TerrainKind.GrowingWall, out GridPosition growingWall);
 		int growingWallCountBefore = CountCells(map, TerrainKind.GrowingWall);
 
 		bool spread = false;
@@ -93,8 +93,7 @@ public sealed class DynamicTerrainTests
 	[Test]
 	public void GrowingWallNeverSpreadsOntoAnOccupiedCell()
 	{
-		DungeonMap map = Generate(seed: 0);
-		GridPosition growingWall = FindCell(map, TerrainKind.GrowingWall);
+		DungeonMap map = CreateMapWithTerrain(TerrainKind.GrowingWall, out _);
 		HashSet<GridPosition> occupied = new();
 
 		for (int y = 0; y < map.Height; y++)
@@ -116,25 +115,31 @@ public sealed class DynamicTerrainTests
 		);
 	}
 
-	private static DungeonMap Generate(int seed)
+	// A small enclosed room: a solid border, floor interior, and one cell of
+	// the requested kind at the center.
+	private static DungeonMap CreateMapWithTerrain(
+		TerrainKind kind,
+		out GridPosition placedAt)
 	{
-		return new DungeonGenerator().Generate(
-			new DungeonGenerationRequest(Width, Height, ZoneCount, seed)
-		);
-	}
+		DungeonMap map = new(Size, Size, seed: 1);
 
-	private static GridPosition FindCell(DungeonMap map, TerrainKind terrainKind)
-	{
-		for (int y = 0; y < map.Height; y++)
+		for (int y = 0; y < Size; y++)
 		{
-			for (int x = 0; x < map.Width; x++)
+			for (int x = 0; x < Size; x++)
 			{
-				if (map.GetCell(x, y).Terrain.Kind == terrainKind)
-					return new GridPosition(x, y);
+				bool isBoundary = x == 0 || y == 0 ||
+					x == Size - 1 || y == Size - 1;
+				map.SetTerrain(
+					x,
+					y,
+					isBoundary ? TerrainKind.SolidWall : TerrainKind.Floor
+				);
 			}
 		}
 
-		throw new AssertionException($"No {terrainKind} cell exists.");
+		placedAt = new GridPosition(Size / 2, Size / 2);
+		map.SetTerrain(placedAt.X, placedAt.Y, kind);
+		return map;
 	}
 
 	private static int CountCells(DungeonMap map, TerrainKind terrainKind)
