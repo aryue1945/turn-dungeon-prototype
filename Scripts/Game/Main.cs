@@ -39,6 +39,7 @@ public partial class Main : Node2D
 	private Texture2D _wallCornerLeftTexture;
 	private Texture2D _wallCornerRightTexture;
 	private Texture2D _wallBarsTexture;
+	private Texture2D _breakableWallTexture;
 	private Texture2D _doorTexture;
 	private DungeonMap _dungeonMap;
 	private DungeonRenderer _dungeonRenderer;
@@ -72,6 +73,9 @@ public partial class Main : Node2D
 		);
 		_wallBarsTexture = GD.Load<Texture2D>(
 			"res://Art/Tiles/prison_wall_bars.png"
+		);
+		_breakableWallTexture = GD.Load<Texture2D>(
+			"res://Art/Tiles/prison_breakable_wall.svg"
 		);
 		_doorTexture = GD.Load<Texture2D>(
 			"res://Art/Tiles/prison_cell_door.png"
@@ -193,6 +197,7 @@ public partial class Main : Node2D
 			_wallCornerLeftTexture,
 			_wallCornerRightTexture,
 			_wallBarsTexture,
+			_breakableWallTexture,
 			_doorTexture,
 			MapOrigin,
 			TileSize
@@ -332,7 +337,7 @@ public partial class Main : Node2D
 			Enemy enemy = _enemyScene.Instantiate<Enemy>();
 			enemy.Name = $"{definition.Id.Replace('.', '_')}{i + 1}";
 			enemy.Position = enemyPosition;
-			enemy.Configure(definition);
+			enemy.Configure(definition, IsWallAt);
 
 			occupiedPositions.Add(enemyPosition);
 			_enemies.Add(enemy);
@@ -574,6 +579,14 @@ public partial class Main : Node2D
 		return !_dungeonMap.IsWalkable(cell.X, cell.Y);
 	}
 
+	private void OpenDoorAt(Vector2 position)
+	{
+		GridPosition cell = PositionToCell(position);
+
+		if (_dungeonMap.OpenDoor(cell.X, cell.Y))
+			_dungeonRenderer.RefreshCell(_dungeonMap, cell.X, cell.Y);
+	}
+
 	private bool IsEnemyActive(Enemy enemy)
 	{
 		return IsInstanceValid(enemy) &&
@@ -634,6 +647,8 @@ public partial class Main : Node2D
 				GetCombatants()
 			);
 
+			OpenDoorAt(enemy.Position);
+
 			if (_player.Health <= 0)
 				break;
 		}
@@ -691,6 +706,7 @@ public partial class Main : Node2D
 			{
 				_player.Move(direction);
 				UpdatePlayerZone();
+				OpenDoorAt(_player.Position);
 			}
 			else
 				GD.Print($"Player hit wall at {targetPosition}");

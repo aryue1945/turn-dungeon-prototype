@@ -111,6 +111,7 @@ public sealed class DungeonCell
 	public int ConnectedZoneA { get; internal set; } = -1;
 	public int ConnectedZoneB { get; internal set; } = -1;
 	public bool IsWalkable => Terrain.IsWalkable;
+	public bool IsOpen { get; private set; }
 
 	internal DungeonCell(GridPosition position)
 	{
@@ -122,6 +123,16 @@ public sealed class DungeonCell
 	{
 		Terrain = TerrainCatalog.Get(terrainKind);
 		Durability = Terrain.MaxDurability;
+		IsOpen = false;
+	}
+
+	internal bool Open()
+	{
+		if (Terrain.Kind != TerrainKind.Door || IsOpen)
+			return false;
+
+		IsOpen = true;
+		return true;
 	}
 
 	internal bool DamageTerrain(int damage)
@@ -278,6 +289,12 @@ public sealed class DungeonMap
 	{
 		DungeonCell cell = GetCell(x, y);
 		return cell != null && cell.DamageTerrain(damage);
+	}
+
+	public bool OpenDoor(int x, int y)
+	{
+		DungeonCell cell = GetCell(x, y);
+		return cell != null && cell.Open();
 	}
 
 	public string ToDebugString()

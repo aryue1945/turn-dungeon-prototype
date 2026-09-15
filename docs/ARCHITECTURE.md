@@ -15,15 +15,15 @@ DungeonMap, DungeonGenerator, and ZoneTemplate are engine-independent.
 AttackResolver is separated from actor classes through ICombatant,
 but combat positions use Godot Vector2 pixel coordinates.
 
-DungeonRenderer creates visuals from map data once.
-Enemies still use rendered wall nodes for terrain blocking.
+DungeonRenderer creates visuals from map data once and can refresh
+individual cells (destroyed walls, opened doors) after generation.
+Player and enemies both query DungeonMap for terrain blocking.
 
 ## Main problem
 
 Gameplay has multiple spatial authorities:
 
-- DungeonMap for player walkability.
-- Scene wall nodes for enemy blocking.
+- DungeonMap for terrain walkability (now shared by player and enemies).
 - Actor node positions for occupancy and attacks.
 
 Terrain changes and animation require one authoritative game state.
@@ -126,7 +126,9 @@ Long-term compatibility across generator versions is not guaranteed.
 
 ## Migration
 
-1. Remove enemy scene-based terrain queries.
+1. ~~Remove enemy scene-based terrain queries.~~ Done: Enemy takes a
+   DungeonMap-backed wall-query delegate from Main instead of scanning
+   a "walls" scene group.
 2. Introduce authoritative actor grid state.
 3. Convert combat to grid coordinates.
 4. Extract turn execution and enemy decisions.

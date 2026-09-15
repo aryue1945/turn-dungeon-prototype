@@ -2,7 +2,7 @@
 
 Status: proposed roadmap awaiting approval.
 
-## 1. Unify terrain authority
+## 1. Unify terrain authority (done)
 
 Remove enemy wall-node scanning.
 Use DungeonMap for all actor terrain checks.
@@ -11,6 +11,10 @@ Acceptance:
 - Player and enemies agree on blocked cells.
 - Empty and out-of-bounds cells block movement.
 - Existing turn timing remains unchanged.
+
+Enemy no longer scans a "walls" scene group; Main injects a
+DungeonMap-backed `IsWallAt` delegate into each enemy via `Configure`,
+the same query the player already uses.
 
 ## 2. Extract actor state
 

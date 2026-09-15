@@ -41,9 +41,10 @@ templates on a shared grid.
 Zones have start, combat, shop, and exit roles. Shop and exit roles
 currently provide metadata rather than complete gameplay.
 
-Doors are currently walkable and retain their graphics.
-Breakable walls have durability in map data, but gameplay does not
-yet invoke destruction.
+Doors are walkable and disappear once an actor steps onto them, but
+there is no closed/open state that blocks movement beforehand.
+Breakable walls render with a distinct brick texture; digging damages
+and eventually destroys them, turning the cell to floor.
 
 ## Development setup
 
@@ -83,7 +84,6 @@ The migration is proposed and is not yet complete.
 
 ## Current limitations
 
-- Enemy terrain checks still read scene wall nodes.
 - Actor scene positions are also gameplay positions.
 - Complete turns and enemy behaviors lack automated coverage.
 - A map seed does not reproduce enemy placement.

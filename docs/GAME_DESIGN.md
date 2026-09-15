@@ -66,8 +66,10 @@ Any later activation or awareness rules must be explicit.
 Current:
 
 - Solid walls block movement.
-- Breakable walls have durability but cannot yet be dug in gameplay.
-- Doors are walkable and have no state transition.
+- Breakable walls have durability, render with a distinct brick
+  texture, and can be dug to destruction (becoming floor).
+- Doors are walkable and disappear once an actor steps onto them, but
+  have no closed state that blocks movement beforehand.
 - Fire and ice are reserved definitions without implemented interactions.
 
 Proposed first implementation:

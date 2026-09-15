@@ -12,6 +12,7 @@ public sealed class DungeonRenderer
 	private readonly Texture2D _wallCornerLeftTexture;
 	private readonly Texture2D _wallCornerRightTexture;
 	private readonly Texture2D _wallBarsTexture;
+	private readonly Texture2D _breakableWallTexture;
 	private readonly Texture2D _doorTexture;
 	private readonly Vector2 _origin;
 	private readonly float _tileSize;
@@ -27,6 +28,7 @@ public sealed class DungeonRenderer
 		Texture2D wallCornerLeftTexture,
 		Texture2D wallCornerRightTexture,
 		Texture2D wallBarsTexture,
+		Texture2D breakableWallTexture,
 		Texture2D doorTexture,
 		Vector2 origin,
 		float tileSize)
@@ -40,6 +42,7 @@ public sealed class DungeonRenderer
 		_wallCornerLeftTexture = wallCornerLeftTexture;
 		_wallCornerRightTexture = wallCornerRightTexture;
 		_wallBarsTexture = wallBarsTexture;
+		_breakableWallTexture = breakableWallTexture;
 		_doorTexture = doorTexture;
 		_origin = origin;
 		_tileSize = tileSize;
@@ -77,7 +80,7 @@ public sealed class DungeonRenderer
 		{
 			Track(position, CreateWall(map, x, y));
 		}
-		else if (cell.Terrain.Kind == TerrainKind.Door)
+		else if (cell.Terrain.Kind == TerrainKind.Door && !cell.IsOpen)
 			Track(position, CreateDoor(x, y));
 	}
 
@@ -131,7 +134,6 @@ public sealed class DungeonRenderer
 		wall.Position = CellToPosition(x, y);
 		wall.GetNode<Sprite2D>("Sprite2D").Texture =
 			GetWallTexture(map, x, y);
-		wall.AddToGroup("walls");
 		_root.AddChild(wall);
 		return wall;
 	}
@@ -151,6 +153,9 @@ public sealed class DungeonRenderer
 
 	private Texture2D GetWallTexture(DungeonMap map, int x, int y)
 	{
+		if (map.GetCell(x, y).Terrain.Kind == TerrainKind.BreakableWall)
+			return _breakableWallTexture;
+
 		bool isLeft = x == 0;
 		bool isRight = x == map.Width - 1;
 		bool isTop = y == 0;
