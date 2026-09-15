@@ -3,7 +3,15 @@ using Godot;
 public partial class Player : CharacterBody2D, ICombatant
 {
 	private const float TileSize = 32.0f;
+	private const int StartingHealth = 3;
+
 	private Polygon2D _facingIndicator;
+
+	// Authoritative grid position and health. Godot's own pixel Position
+	// (inherited from CharacterBody2D) is kept in sync from this and used
+	// only for rendering/camera - see PlaceAt and Move.
+	private readonly ActorState _state =
+		new(new GridPosition(0, 0), StartingHealth);
 
 	[Signal]
 	public delegate void MoveRequestedEventHandler(Vector2 direction);
@@ -14,7 +22,8 @@ public partial class Player : CharacterBody2D, ICombatant
 	[Signal]
 	public delegate void DiedEventHandler();
 
-	public int Health { get; private set; } = 3;
+	public GridPosition GridPosition => _state.GridPosition;
+	public int Health => _state.Health;
 	public bool IsAlive => Health > 0;
 	public CombatFaction Faction => CombatFaction.Player;
 	public WeaponDefinition Weapon { get; private set; } =
@@ -75,9 +84,18 @@ public partial class Player : CharacterBody2D, ICombatant
 		DiggingTool = diggingTool;
 	}
 
+	// Called once by Main after generation to set the player's starting
+	// cell, instead of Main writing the pixel Position directly.
+	public void PlaceAt(GridPosition gridPosition, Vector2 pixelPosition)
+	{
+		_state.MoveTo(gridPosition);
+		Position = pixelPosition;
+	}
+
 	public void Move(Vector2 direction)
 	{
 		Position += direction * TileSize;
+		_state.MoveBy((int)direction.X, (int)direction.Y);
 	}
 
 	private void SetFacingDirection(Vector2 direction)
@@ -90,10 +108,7 @@ public partial class Player : CharacterBody2D, ICombatant
 		if (Health <= 0)
 			return;
 
-		Health -= damage;
-
-		if (Health < 0)
-			Health = 0;
+		_state.TakeDamage(damage);
 
 		GD.Print($"Player health: {Health}");
 		EmitSignal(SignalName.HealthChanged, Health);

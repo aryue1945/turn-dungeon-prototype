@@ -33,7 +33,7 @@ public enum CombatFaction
 
 public interface ICombatant
 {
-	Vector2 Position { get; }
+	GridPosition GridPosition { get; }
 	CombatFaction Faction { get; }
 	bool IsAlive { get; }
 

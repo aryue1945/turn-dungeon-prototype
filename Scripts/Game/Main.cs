@@ -166,15 +166,6 @@ public partial class Main : Node2D
 		);
 	}
 
-	private GridPosition PositionToCell(Vector2 position)
-	{
-		Vector2 localPosition = (position - MapOrigin) / TileSize;
-		return new GridPosition(
-			Mathf.RoundToInt(localPosition.X),
-			Mathf.RoundToInt(localPosition.Y)
-		);
-	}
-
 	private void CreateDungeon()
 	{
 		_dungeonSeed = unchecked((int)_random.Randi());
@@ -216,13 +207,13 @@ public partial class Main : Node2D
 			zone => zone.Type == DungeonZoneType.Start
 		);
 		GridPosition startCell = startZone.Room.Center;
-		_player.Position = CellToPosition(startCell);
+		_player.PlaceAt(startCell, CellToPosition(startCell));
 		UpdatePlayerZone();
 	}
 
 	private void UpdatePlayerZone()
 	{
-		GridPosition cell = PositionToCell(_player.Position);
+		GridPosition cell = _player.GridPosition;
 		int zoneId = _dungeonMap.GetZoneId(cell.X, cell.Y);
 
 		// A door belongs to both neighboring zones, so retain the
@@ -312,9 +303,9 @@ public partial class Main : Node2D
 
 	private void SpawnEnemies()
 	{
-		HashSet<Vector2> occupiedPositions = new()
+		HashSet<GridPosition> occupiedCells = new()
 		{
-			_player.Position
+			_player.GridPosition
 		};
 
 		List<DungeonZone> combatZones = _dungeonMap.Zones
@@ -329,17 +320,20 @@ public partial class Main : Node2D
 			DungeonRoom room = combatZones[i % combatZones.Count].Room;
 			GridPosition enemyCell = GetRandomSpawnCell(
 				room,
-				occupiedPositions
+				occupiedCells
 			);
-			Vector2 enemyPosition = CellToPosition(enemyCell);
 
 			MonsterDefinition definition = _spawnPool[i];
 			Enemy enemy = _enemyScene.Instantiate<Enemy>();
 			enemy.Name = $"{definition.Id.Replace('.', '_')}{i + 1}";
-			enemy.Position = enemyPosition;
-			enemy.Configure(definition, IsWallAt);
+			enemy.Configure(
+				definition,
+				enemyCell,
+				CellToPosition(enemyCell),
+				IsWallAt
+			);
 
-			occupiedPositions.Add(enemyPosition);
+			occupiedCells.Add(enemyCell);
 			_enemies.Add(enemy);
 			AddChild(enemy);
 		}
@@ -347,7 +341,7 @@ public partial class Main : Node2D
 
 	private GridPosition GetRandomSpawnCell(
 		DungeonRoom room,
-		HashSet<Vector2> occupiedPositions)
+		HashSet<GridPosition> occupiedCells)
 	{
 		for (int attempt = 0; attempt < 100; attempt++)
 		{
@@ -355,10 +349,9 @@ public partial class Main : Node2D
 				_random.RandiRange(room.X, room.Right - 1),
 				_random.RandiRange(room.Y, room.Bottom - 1)
 			);
-			Vector2 position = CellToPosition(cell);
 
 			if (_dungeonMap.IsWalkable(cell.X, cell.Y) &&
-				!occupiedPositions.Contains(position))
+				!occupiedCells.Contains(cell))
 			{
 				return cell;
 			}
@@ -369,10 +362,9 @@ public partial class Main : Node2D
 			for (int x = room.X; x < room.Right; x++)
 			{
 				GridPosition cell = new(x, y);
-				Vector2 position = CellToPosition(cell);
 
 				if (_dungeonMap.IsWalkable(x, y) &&
-					!occupiedPositions.Contains(position))
+					!occupiedCells.Contains(cell))
 				{
 					return cell;
 				}
@@ -573,18 +565,15 @@ public partial class Main : Node2D
 		basicSwordButton.GrabFocus();
 	}
 
-	private bool IsWallAt(Vector2 position)
+	private bool IsWallAt(GridPosition position)
 	{
-		GridPosition cell = PositionToCell(position);
-		return !_dungeonMap.IsWalkable(cell.X, cell.Y);
+		return !_dungeonMap.IsWalkable(position.X, position.Y);
 	}
 
-	private void OpenDoorAt(Vector2 position)
+	private void OpenDoorAt(GridPosition position)
 	{
-		GridPosition cell = PositionToCell(position);
-
-		if (_dungeonMap.OpenDoor(cell.X, cell.Y))
-			_dungeonRenderer.RefreshCell(_dungeonMap, cell.X, cell.Y);
+		if (_dungeonMap.OpenDoor(position.X, position.Y))
+			_dungeonRenderer.RefreshCell(_dungeonMap, position.X, position.Y);
 	}
 
 	private bool IsEnemyActive(Enemy enemy)
@@ -602,14 +591,14 @@ public partial class Main : Node2D
 		}
 	}
 
-	private HashSet<Vector2> GetOccupiedEnemyPositions(Enemy movingEnemy)
+	private HashSet<GridPosition> GetOccupiedEnemyPositions(Enemy movingEnemy)
 	{
-		HashSet<Vector2> occupiedPositions = new();
+		HashSet<GridPosition> occupiedPositions = new();
 
 		foreach (Enemy enemy in _enemies)
 		{
 			if (enemy != movingEnemy && IsEnemyActive(enemy))
-				occupiedPositions.Add(enemy.Position);
+				occupiedPositions.Add(enemy.GridPosition);
 		}
 
 		return occupiedPositions;
@@ -638,7 +627,7 @@ public partial class Main : Node2D
 			if (!IsEnemyActive(enemy))
 				continue;
 
-			HashSet<Vector2> occupiedPositions =
+			HashSet<GridPosition> occupiedPositions =
 				GetOccupiedEnemyPositions(enemy);
 
 			enemy.TakeTurn(
@@ -647,7 +636,7 @@ public partial class Main : Node2D
 				GetCombatants()
 			);
 
-			OpenDoorAt(enemy.Position);
+			OpenDoorAt(enemy.GridPosition);
 
 			if (_player.Health <= 0)
 				break;
@@ -659,8 +648,10 @@ public partial class Main : Node2D
 		if (_gameEnded || !_gameStarted)
 			return;
 
-		Vector2 targetPosition =
-			_player.Position + direction * TileSize;
+		GridPosition targetCell = new(
+			_player.GridPosition.X + (int)direction.X,
+			_player.GridPosition.Y + (int)direction.Y
+		);
 
 		AttackTurnResult attackResult =
 			AttackResolver.TryAttack(
@@ -673,7 +664,6 @@ public partial class Main : Node2D
 
 		if (attackResult == AttackTurnResult.NoAttack)
 		{
-			GridPosition targetCell = PositionToCell(targetPosition);
 			DigResult digResult = DigResolver.TryDig(
 				_dungeonMap,
 				targetCell,
@@ -702,14 +692,14 @@ public partial class Main : Node2D
 					);
 				}
 			}
-			else if (!IsWallAt(targetPosition))
+			else if (!IsWallAt(targetCell))
 			{
 				_player.Move(direction);
 				UpdatePlayerZone();
-				OpenDoorAt(_player.Position);
+				OpenDoorAt(_player.GridPosition);
 			}
 			else
-				GD.Print($"Player hit wall at {targetPosition}");
+				GD.Print($"Player hit wall at {targetCell}");
 		}
 		else
 		{

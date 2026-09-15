@@ -39,11 +39,11 @@ dotnet build "New Game Project.csproj"
 dotnet test Tests/TurnDungeon.Tests.csproj
 ```
 
-The source contains 29 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, and monster-mod loading. Full-turn and Godot input/rendering integration coverage are still missing.
+The source contains 35 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading, and actor state. Full-turn and Godot input/rendering integration coverage are still missing.
 
 ## Architecture and next work
 
-Terrain authority is already unified. Actor positions, health, combat, and AI execution still depend on Godot nodes. Next: extract authoritative C# actor/grid state and a complete-turn resolver while preserving existing behavior and mod IDs.
+Terrain authority is already unified. Both the player's and enemies' grid position and health now live in an authoritative `ActorState`, and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. Facing, attack preparation, and monster identity still live only on the Godot nodes. Next: fold that state into ActorState too, then extract a complete-turn resolver while preserving existing behavior and mod IDs.
 
 Approved direction to implement after that foundation:
 
@@ -64,7 +64,7 @@ Save/resume and debug history are **not implemented**. Debug history is not a pr
 
 ## Current limitations
 
-- Actor scene positions remain gameplay positions; no standalone GameState or TurnResolver.
+- Facing, attack preparation and monster identity remain node-only state; no standalone GameState or TurnResolver.
 - A map seed does not reproduce enemy placement or guarantee the same mod roster/order.
 - No run save/load, debug-history export, persistent progression, or difficulty modifiers.
 - Closed-door blocking, floor transitions, wait, and obstacle-aware navigation remain open.

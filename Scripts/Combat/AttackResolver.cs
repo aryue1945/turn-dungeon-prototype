@@ -4,14 +4,12 @@ using System.Collections.Generic;
 
 public static class AttackResolver
 {
-	private const float TileSize = 32.0f;
-
 	public static AttackTurnResult TryAttack(
 		ICombatant attacker,
 		Vector2 requestedDirection,
 		AttackState attackState,
 		IReadOnlyList<ICombatant> combatants,
-		Func<Vector2, bool> isWallAt)
+		Func<GridPosition, bool> isWallAt)
 	{
 		if (attackState.IsPreparing)
 		{
@@ -71,12 +69,12 @@ public static class AttackResolver
 		Vector2 direction,
 		AttackDefinition definition,
 		IReadOnlyList<ICombatant> combatants,
-		Func<Vector2, bool> isWallAt)
+		Func<GridPosition, bool> isWallAt)
 	{
 		foreach (AttackOffset offset in definition.DetectionOffsets)
 		{
-			Vector2 position = GetPatternPosition(
-				attacker.Position,
+			GridPosition position = GetPatternPosition(
+				attacker.GridPosition,
 				direction,
 				offset
 			);
@@ -105,14 +103,14 @@ public static class AttackResolver
 		Vector2 direction,
 		AttackDefinition definition,
 		IReadOnlyList<ICombatant> combatants,
-		Func<Vector2, bool> isWallAt)
+		Func<GridPosition, bool> isWallAt)
 	{
 		HashSet<ICombatant> hitTargets = new();
 
 		foreach (AttackOffset offset in definition.AttackOffsets)
 		{
-			Vector2 position = GetPatternPosition(
-				attacker.Position,
+			GridPosition position = GetPatternPosition(
+				attacker.GridPosition,
 				direction,
 				offset
 			);
@@ -141,21 +139,24 @@ public static class AttackResolver
 		}
 	}
 
-	private static Vector2 GetPatternPosition(
-		Vector2 origin,
+	private static GridPosition GetPatternPosition(
+		GridPosition origin,
 		Vector2 direction,
 		AttackOffset offset)
 	{
 		Vector2 right = new(-direction.Y, direction.X);
-		Vector2 gridOffset =
+		Vector2 cellOffset =
 			direction * offset.Forward +
 			right * offset.Right;
 
-		return origin + gridOffset * TileSize;
+		return new GridPosition(
+			origin.X + (int)cellOffset.X,
+			origin.Y + (int)cellOffset.Y
+		);
 	}
 
 	private static ICombatant FindCombatantAt(
-		Vector2 position,
+		GridPosition position,
 		ICombatant attacker,
 		IReadOnlyList<ICombatant> combatants)
 	{
@@ -164,7 +165,7 @@ public static class AttackResolver
 			if (combatant == attacker || !combatant.IsAlive)
 				continue;
 
-			if (combatant.Position.IsEqualApprox(position))
+			if (combatant.GridPosition == position)
 				return combatant;
 		}
 
