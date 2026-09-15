@@ -6,34 +6,39 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 {
 	private const float TileSize = 32.0f;
 
-	private int _health;
-	private int _maxHealth;
+	private ActorState _state;
 	private Polygon2D _facingIndicator;
 	private Label _healthLabel;
 	private Vector2 _facingDirection = Vector2.Down;
 	private IEnemyMovementBehavior _movementBehavior;
-	private Func<Vector2, bool> _isWallAt;
+	private Func<GridPosition, bool> _isWallAt;
 
 	public MonsterDefinition Definition { get; private set; }
 	public bool IsAlive =>
-		_health > 0 && !IsQueuedForDeletion();
+		_state.IsAlive && !IsQueuedForDeletion();
 	public CombatFaction Faction => CombatFaction.Enemy;
 	public AttackState Attack { get; private set; }
 
-	Vector2 IEnemyMovementHost.Position => Position;
+	public GridPosition GridPosition => _state.GridPosition;
 	Vector2 IEnemyMovementHost.FacingDirection => _facingDirection;
 
 	// Must be called before this node enters the tree (Main configures the
 	// enemy immediately after instantiating it, before AddChild triggers
 	// _Ready). Everything the definition drives - health, sprite, movement
 	// behavior, attack - is resolved here instead of being hard-coded, so a
-	// modded MonsterDefinition works exactly like a built-in one.
-	public void Configure(MonsterDefinition definition, Func<Vector2, bool> isWallAt)
+	// modded MonsterDefinition works exactly like a built-in one. gridPosition
+	// and pixelPosition set the authoritative ActorState and the synced
+	// pixel Position together, the same way Player.PlaceAt does.
+	public void Configure(
+		MonsterDefinition definition,
+		GridPosition gridPosition,
+		Vector2 pixelPosition,
+		Func<GridPosition, bool> isWallAt)
 	{
 		Definition = definition;
 		_movementBehavior = EnemyMovementBehaviors.Create(definition.MovementBehaviorId);
-		_health = definition.Health;
-		_maxHealth = definition.Health;
+		_state = new ActorState(gridPosition, definition.Health);
+		Position = pixelPosition;
 		Attack = new AttackState(definition.PrimaryAttack);
 		_facingDirection = _movementBehavior.InitialFacingDirection;
 		_isWallAt = isWallAt;
@@ -62,15 +67,12 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 
 	public void TakeDamage(int damage)
 	{
-		_health -= damage;
-
-		if (_health < 0)
-			_health = 0;
+		_state.TakeDamage(damage);
 
 		UpdateHealthDisplay();
-		GD.Print($"{Name} health: {_health}/{_maxHealth}");
+		GD.Print($"{Name} health: {_state.Health}/{_state.MaxHealth}");
 
-		if (_health <= 0)
+		if (_state.Health <= 0)
 		{
 			GD.Print($"{Name} defeated!");
 			QueueFree();
@@ -79,7 +81,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 
 	public void TakeTurn(
 		Player player,
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
 		_movementBehavior.TakeTurn(
@@ -105,7 +107,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	void IEnemyMovementHost.TurnRight() => TurnRight();
 
 	EnemyMoveResult IEnemyMovementHost.TryMoveForward(
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
 		return TryMoveForward(occupiedEnemyPositions, combatants);
@@ -130,7 +132,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	}
 
 	private EnemyMoveResult TryMoveForward(
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
 		AttackTurnResult attackResult =
@@ -154,16 +156,19 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 			return EnemyMoveResult.AttackAction;
 		}
 
-		Vector2 nextPosition =
-			Position + _facingDirection * TileSize;
+		GridPosition nextGridPosition = new(
+			_state.GridPosition.X + (int)_facingDirection.X,
+			_state.GridPosition.Y + (int)_facingDirection.Y
+		);
 
-		if (_isWallAt(nextPosition) ||
-			occupiedEnemyPositions.Contains(nextPosition))
+		if (_isWallAt(nextGridPosition) ||
+			occupiedEnemyPositions.Contains(nextGridPosition))
 		{
 			return EnemyMoveResult.Blocked;
 		}
 
-		Position = nextPosition;
+		Position += _facingDirection * TileSize;
+		_state.MoveTo(nextGridPosition);
 		return EnemyMoveResult.Moved;
 	}
 
@@ -208,7 +213,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 
 	private void UpdateHealthDisplay()
 	{
-		_healthLabel.Text = $"{_health}/{_maxHealth}";
+		_healthLabel.Text = $"{_state.Health}/{_state.MaxHealth}";
 	}
 
 	private void UpdateFacingIndicatorRotation()

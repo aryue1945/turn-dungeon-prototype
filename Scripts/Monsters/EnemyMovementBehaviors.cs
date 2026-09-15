@@ -15,7 +15,7 @@ public enum EnemyMoveResult
 // exposing the rest of Enemy's internals. Enemy implements this explicitly.
 public interface IEnemyMovementHost
 {
-	Vector2 Position { get; }
+	GridPosition GridPosition { get; }
 	Vector2 FacingDirection { get; }
 
 	void SetFacingDirection(Vector2 direction);
@@ -24,7 +24,7 @@ public interface IEnemyMovementHost
 	void TurnRight();
 
 	EnemyMoveResult TryMoveForward(
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants);
 }
 
@@ -40,7 +40,7 @@ public interface IEnemyMovementBehavior
 	void TakeTurn(
 		IEnemyMovementHost host,
 		Player player,
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants);
 }
 
@@ -57,13 +57,13 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 	public void TakeTurn(
 		IEnemyMovementHost host,
 		Player player,
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
 		if (!_hasPreparedMove)
 		{
 			// Preparing is the entire action for this turn.
-			PrepareMove(host, player.Position);
+			PrepareMove(host, player.GridPosition);
 			_hasPreparedMove = true;
 			return;
 		}
@@ -74,16 +74,19 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 		host.SetFacingIndicatorVisible(false);
 	}
 
-	private static void PrepareMove(IEnemyMovementHost host, Vector2 playerPosition)
+	private static void PrepareMove(
+		IEnemyMovementHost host,
+		GridPosition playerGridPosition)
 	{
-		Vector2 difference = playerPosition - host.Position;
+		int deltaX = playerGridPosition.X - host.GridPosition.X;
+		int deltaY = playerGridPosition.Y - host.GridPosition.Y;
 
-		if (difference.IsZeroApprox())
+		if (deltaX == 0 && deltaY == 0)
 			return;
 
-		Vector2 direction = Mathf.Abs(difference.X) > Mathf.Abs(difference.Y)
-			? new Vector2(Mathf.Sign(difference.X), 0)
-			: new Vector2(0, Mathf.Sign(difference.Y));
+		Vector2 direction = Math.Abs(deltaX) > Math.Abs(deltaY)
+			? new Vector2(Math.Sign(deltaX), 0)
+			: new Vector2(0, Math.Sign(deltaY));
 
 		host.SetFacingDirection(direction);
 		host.SetFacingIndicatorVisible(true);
@@ -100,7 +103,7 @@ public sealed class PatrolBehavior : IEnemyMovementBehavior
 	public void TakeTurn(
 		IEnemyMovementHost host,
 		Player player,
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
 		EnemyMoveResult result =
@@ -129,7 +132,7 @@ public sealed class TurningWalkerBehavior : IEnemyMovementBehavior
 	public void TakeTurn(
 		IEnemyMovementHost host,
 		Player player,
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
 		EnemyMoveResult result =
@@ -156,7 +159,7 @@ public sealed class StationaryBehavior : IEnemyMovementBehavior
 	public void TakeTurn(
 		IEnemyMovementHost host,
 		Player player,
-		HashSet<Vector2> occupiedEnemyPositions,
+		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
 	}

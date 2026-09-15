@@ -20,9 +20,9 @@ Tree/growing walls remain disabled in generation and the turn loop. Do not re-en
 
 Add ActorState and GameState with instance IDs, GridPosition, health, facing, equipment and attack/behavior state. Convert combat and occupancy to cells. Preserve existing monster IDs and behavior factories; add stable weapon/tool IDs.
 
-Done: `Scripts/Actors/ActorState.cs` (GridPosition + health, engine-independent, unit tested). Player owns one as its authoritative source; `PlaceAt`/`Move` keep its pixel Position in sync from it, and Main reads `Player.GridPosition` instead of re-deriving it from pixels for zone tracking and dig-target selection.
+Done: `Scripts/Actors/ActorState.cs` (GridPosition + health, engine-independent, unit tested). Player and Enemy both own one as their authoritative source; `PlaceAt`/`Move` (Player) and `Configure`/`TryMoveForward` (Enemy) keep pixel Position in sync from it. `ICombatant.GridPosition` replaced pixel `Position`; `AttackResolver`'s offset math and Main's `IsWallAt`/`OpenDoorAt`/enemy-occupancy sets/spawn-cell selection all work in `GridPosition` now.
 
-Remaining: give Enemy the same treatment; add instance IDs, facing, equipment and attack/behavior state to ActorState; convert `ICombatant`/`AttackResolver` and Main's enemy-occupancy/wall queries from pixel `Vector2` to `GridPosition`; add stable weapon/tool IDs; introduce GameState.
+Remaining: add instance IDs, facing, equipment and attack/behavior state to ActorState (Enemy's `_facingDirection` and `ChasePlayerBehavior._hasPreparedMove` are the two pieces of private node/behavior state called out in SAVE_AND_DEBUG_HISTORY.md); add stable weapon/tool IDs; introduce GameState.
 
 Acceptance: rules no longer read node positions; views derive positions from state; definitions remain separate from runtime data; a slow chaser's prepared move can be captured explicitly.
 

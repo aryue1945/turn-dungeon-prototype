@@ -43,7 +43,7 @@ The source contains 35 NUnit test methods across generation, weapon attacks, dig
 
 ## Architecture and next work
 
-Terrain authority is already unified. The player's grid position and health now live in an authoritative `ActorState`; enemy positions, health, combat, and AI execution still depend on Godot nodes. Next: give enemies the same `ActorState` treatment, convert combat/occupancy to grid coordinates, then extract a complete-turn resolver while preserving existing behavior and mod IDs.
+Terrain authority is already unified. Both the player's and enemies' grid position and health now live in an authoritative `ActorState`, and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. Facing, attack preparation, and monster identity still live only on the Godot nodes. Next: fold that state into ActorState too, then extract a complete-turn resolver while preserving existing behavior and mod IDs.
 
 Approved direction to implement after that foundation:
 
@@ -64,7 +64,7 @@ Save/resume and debug history are **not implemented**. Debug history is not a pr
 
 ## Current limitations
 
-- Enemy scene positions remain gameplay positions (Player's are now backed by `ActorState`); no standalone GameState or TurnResolver.
+- Facing, attack preparation and monster identity remain node-only state; no standalone GameState or TurnResolver.
 - A map seed does not reproduce enemy placement or guarantee the same mod roster/order.
 - No run save/load, debug-history export, persistent progression, or difficulty modifiers.
 - Closed-door blocking, floor transitions, wait, and obstacle-aware navigation remain open.

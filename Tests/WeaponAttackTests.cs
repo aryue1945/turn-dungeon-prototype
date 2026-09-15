@@ -5,13 +5,11 @@ using System.Collections.Generic;
 [TestFixture]
 public sealed class WeaponAttackTests
 {
-	private const float TileSize = 32.0f;
-
 	[Test]
 	public void BasicSword_HitsEnemyOneCellForward()
 	{
-		FakeCombatant player = PlayerAt(Vector2.Zero);
-		FakeCombatant enemy = EnemyAt(Vector2.Right * TileSize);
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(1, 0));
 
 		AttackTurnResult result = UseWeapon(
 			WeaponDefinitions.BasicSword,
@@ -26,8 +24,8 @@ public sealed class WeaponAttackTests
 	[Test]
 	public void BasicSword_DoesNotReachTwoCellsForward()
 	{
-		FakeCombatant player = PlayerAt(Vector2.Zero);
-		FakeCombatant enemy = EnemyAt(Vector2.Right * TileSize * 2);
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(2, 0));
 
 		AttackTurnResult result = UseWeapon(
 			WeaponDefinitions.BasicSword,
@@ -42,8 +40,8 @@ public sealed class WeaponAttackTests
 	[Test]
 	public void LongSword_HitsEnemyTwoCellsForwardWhenFirstCellIsEmpty()
 	{
-		FakeCombatant player = PlayerAt(Vector2.Zero);
-		FakeCombatant enemy = EnemyAt(Vector2.Right * TileSize * 2);
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(2, 0));
 
 		AttackTurnResult result = UseWeapon(
 			WeaponDefinitions.LongSword,
@@ -58,9 +56,9 @@ public sealed class WeaponAttackTests
 	[Test]
 	public void LongSword_HitsOnlyNearestEnemy()
 	{
-		FakeCombatant player = PlayerAt(Vector2.Zero);
-		FakeCombatant nearEnemy = EnemyAt(Vector2.Right * TileSize);
-		FakeCombatant farEnemy = EnemyAt(Vector2.Right * TileSize * 2);
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant nearEnemy = EnemyAt(new GridPosition(1, 0));
+		FakeCombatant farEnemy = EnemyAt(new GridPosition(2, 0));
 
 		AttackTurnResult result = UseWeapon(
 			WeaponDefinitions.LongSword,
@@ -76,11 +74,11 @@ public sealed class WeaponAttackTests
 	[Test]
 	public void LongSword_CannotAttackThroughWall()
 	{
-		FakeCombatant player = PlayerAt(Vector2.Zero);
-		FakeCombatant enemy = EnemyAt(Vector2.Right * TileSize * 2);
-		HashSet<Vector2> walls = new()
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(2, 0));
+		HashSet<GridPosition> walls = new()
 		{
-			Vector2.Right * TileSize
+			new GridPosition(1, 0)
 		};
 
 		AttackTurnResult result = UseWeapon(
@@ -97,8 +95,8 @@ public sealed class WeaponAttackTests
 	[Test]
 	public void LongSword_RotatesPatternWithRequestedDirection()
 	{
-		FakeCombatant player = PlayerAt(Vector2.Zero);
-		FakeCombatant enemy = EnemyAt(Vector2.Up * TileSize * 2);
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(0, -2));
 
 		AttackTurnResult result = UseWeapon(
 			WeaponDefinitions.LongSword,
@@ -115,7 +113,7 @@ public sealed class WeaponAttackTests
 		WeaponDefinition weapon,
 		FakeCombatant player,
 		IReadOnlyList<FakeCombatant> enemies,
-		HashSet<Vector2> walls = null,
+		HashSet<GridPosition> walls = null,
 		Vector2? direction = null)
 	{
 		List<ICombatant> combatants = new()
@@ -126,7 +124,7 @@ public sealed class WeaponAttackTests
 		foreach (FakeCombatant enemy in enemies)
 			combatants.Add(enemy);
 
-		walls ??= new HashSet<Vector2>();
+		walls ??= new HashSet<GridPosition>();
 
 		return AttackResolver.TryAttack(
 			player,
@@ -137,26 +135,26 @@ public sealed class WeaponAttackTests
 		);
 	}
 
-	private static FakeCombatant PlayerAt(Vector2 position)
+	private static FakeCombatant PlayerAt(GridPosition gridPosition)
 	{
-		return new FakeCombatant(position, CombatFaction.Player);
+		return new FakeCombatant(gridPosition, CombatFaction.Player);
 	}
 
-	private static FakeCombatant EnemyAt(Vector2 position)
+	private static FakeCombatant EnemyAt(GridPosition gridPosition)
 	{
-		return new FakeCombatant(position, CombatFaction.Enemy);
+		return new FakeCombatant(gridPosition, CombatFaction.Enemy);
 	}
 
 	private sealed class FakeCombatant : ICombatant
 	{
-		public Vector2 Position { get; }
+		public GridPosition GridPosition { get; }
 		public CombatFaction Faction { get; }
 		public int Health { get; private set; } = 3;
 		public bool IsAlive => Health > 0;
 
-		public FakeCombatant(Vector2 position, CombatFaction faction)
+		public FakeCombatant(GridPosition gridPosition, CombatFaction faction)
 		{
-			Position = position;
+			GridPosition = gridPosition;
 			Faction = faction;
 		}
 
