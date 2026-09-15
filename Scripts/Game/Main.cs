@@ -14,17 +14,10 @@ public partial class Main : Node2D
 	private const float CameraZoomStep = 0.25f;
 
 	private static readonly Vector2 MapOrigin = Vector2.Zero;
-	private static readonly EnemyMovementType[] EnemyTypes =
-	{
-		EnemyMovementType.SlowChaser,
-		EnemyMovementType.Patroller,
-		EnemyMovementType.LeftTurner,
-		EnemyMovementType.RightTurner,
-		EnemyMovementType.Stationary
-	};
 
 	private readonly RandomNumberGenerator _random = new();
 	private readonly List<Enemy> _enemies = new();
+	private List<MonsterDefinition> _spawnPool = new();
 
 	private Player _player;
 	private Label _healthLabel;
@@ -85,6 +78,7 @@ public partial class Main : Node2D
 		);
 
 		_random.Randomize();
+		_spawnPool = BuildSpawnPool();
 
 		CreateDungeon();
 		PlacePlayerInStartRoom();
@@ -289,6 +283,28 @@ public partial class Main : Node2D
 		GD.Print($"Camera zoom: {clampedZoom:0.00}x");
 	}
 
+	// Built-in monsters plus any monster mods found on disk. Kept as data
+	// (MonsterDefinition) so SpawnEnemies doesn't need to know which
+	// monsters are built-in versus modded.
+	private List<MonsterDefinition> BuildSpawnPool()
+	{
+		List<MonsterDefinition> pool = new(MonsterDefinitions.All);
+
+		string modsPath = ProjectSettings.GlobalizePath("res://mods");
+		MonsterModLoadResult modResult = MonsterModLoader.LoadFromDirectory(modsPath);
+
+		foreach (string error in modResult.Errors)
+			GD.PushError(error);
+
+		if (modResult.Monsters.Count > 0)
+		{
+			GD.Print($"Loaded {modResult.Monsters.Count} modded monster(s) from {modsPath}.");
+			pool.AddRange(modResult.Monsters);
+		}
+
+		return pool;
+	}
+
 	private void SpawnEnemies()
 	{
 		HashSet<Vector2> occupiedPositions = new()
@@ -300,10 +316,10 @@ public partial class Main : Node2D
 			.Where(zone => zone.Type == DungeonZoneType.Combat)
 			.ToList();
 
-		if (combatZones.Count == 0)
+		if (combatZones.Count == 0 || _spawnPool.Count == 0)
 			return;
 
-		for (int i = 0; i < EnemyTypes.Length; i++)
+		for (int i = 0; i < _spawnPool.Count; i++)
 		{
 			DungeonRoom room = combatZones[i % combatZones.Count].Room;
 			GridPosition enemyCell = GetRandomSpawnCell(
@@ -312,11 +328,11 @@ public partial class Main : Node2D
 			);
 			Vector2 enemyPosition = CellToPosition(enemyCell);
 
-			EnemyMovementType movementType = EnemyTypes[i];
+			MonsterDefinition definition = _spawnPool[i];
 			Enemy enemy = _enemyScene.Instantiate<Enemy>();
-			enemy.Name = $"{movementType}{i + 1}";
+			enemy.Name = $"{definition.Id.Replace('.', '_')}{i + 1}";
 			enemy.Position = enemyPosition;
-			enemy.Configure(movementType);
+			enemy.Configure(definition);
 
 			occupiedPositions.Add(enemyPosition);
 			_enemies.Add(enemy);

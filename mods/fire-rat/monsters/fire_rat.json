@@ -1,0 +1,15 @@
+{
+	"id": "fire-rat.fire_rat",
+	"name": "Fire Rat",
+	"health": 4,
+	"sprite": "fire_rat.png",
+	"movement": "chase_player",
+	"attacks": [
+		{
+			"pattern": "adjacent",
+			"damage": 2,
+			"effect": "burn"
+		}
+	],
+	"lootTable": "basic_monster"
+}

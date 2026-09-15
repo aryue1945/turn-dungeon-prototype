@@ -100,6 +100,22 @@ Protect shared definition collections from mutation.
 Current sword patterns are ordered lines.
 Define new occlusion rules before introducing area patterns.
 
+## Monster definitions
+
+MonsterDefinition (Scripts/Monsters) separates monster data - stats, sprite,
+movement behavior id, attacks - from Enemy, the node that displays and runs
+it. Movement behaviors (IEnemyMovementBehavior) are registered by string id
+so a monster references one instead of Enemy hard-coding a switch.
+
+Enemy still contains both gameplay and visual behavior (see "Current
+design" and "Main problem" above); this only removed the per-type hard-coding,
+it did not extract Enemy's gameplay state onto ActorState. That extraction is
+still open (see Migration).
+
+MonsterModLoader (Scripts/Modding) reads the same MonsterDefinition shape
+from mod JSON under mods/, so built-in and modded monsters spawn through one
+path. See docs/MODDING.md for the format and current limitations.
+
 ## Determinism
 
 A reproducible run setup needs map generation and spawn randomness

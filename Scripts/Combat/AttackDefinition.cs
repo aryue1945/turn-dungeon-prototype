@@ -51,6 +51,11 @@ public sealed class AttackDefinition
 	public bool StopsAtWalls { get; }
 	public int MaxTargets { get; }
 
+	// Not yet consumed by AttackResolver. Carried through so data-driven
+	// attacks (e.g. modded monsters) can tag a status effect ahead of the
+	// combat system actually applying one.
+	public string StatusEffectId { get; }
+
 	public AttackDefinition(
 		string name,
 		int damage,
@@ -59,7 +64,8 @@ public sealed class AttackDefinition
 		AttackOffset[] attackOffsets,
 		AttackTargetRule targetRule,
 		bool stopsAtWalls,
-		int maxTargets)
+		int maxTargets,
+		string statusEffectId = null)
 	{
 		Name = name;
 		Damage = damage;
@@ -69,6 +75,7 @@ public sealed class AttackDefinition
 		TargetRule = targetRule;
 		StopsAtWalls = stopsAtWalls;
 		MaxTargets = maxTargets;
+		StatusEffectId = statusEffectId;
 	}
 }
 
