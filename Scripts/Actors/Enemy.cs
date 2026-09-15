@@ -1,47 +1,39 @@
 using Godot;
 using System.Collections.Generic;
 
-public enum EnemyMovementType
+public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 {
-	SlowChaser,
-	Patroller,
-	LeftTurner,
-	RightTurner,
-	Stationary
-}
-
-public partial class Enemy : CharacterBody2D, ICombatant
-{
-	private enum ForwardActionResult
-	{
-		Moved,
-		AttackAction,
-		Blocked
-	}
-
 	private const float TileSize = 32.0f;
-	private const int MaxHealth = 2;
 
-	private int _health = MaxHealth;
+	private int _health;
+	private int _maxHealth;
 	private Polygon2D _facingIndicator;
 	private Label _healthLabel;
 	private Vector2 _facingDirection = Vector2.Down;
-	private bool _slowChaserHasPreparedMove;
+	private IEnemyMovementBehavior _movementBehavior;
 
-	public EnemyMovementType MovementType { get; private set; }
+	public MonsterDefinition Definition { get; private set; }
 	public bool IsAlive =>
 		_health > 0 && !IsQueuedForDeletion();
 	public CombatFaction Faction => CombatFaction.Enemy;
-	public AttackState Attack { get; } = new(
-		AttackDefinitions.BasicEnemyStrike
-	);
+	public AttackState Attack { get; private set; }
 
-	public void Configure(EnemyMovementType movementType)
+	Vector2 IEnemyMovementHost.Position => Position;
+	Vector2 IEnemyMovementHost.FacingDirection => _facingDirection;
+
+	// Must be called before this node enters the tree (Main configures the
+	// enemy immediately after instantiating it, before AddChild triggers
+	// _Ready). Everything the definition drives - health, sprite, movement
+	// behavior, attack - is resolved here instead of being hard-coded, so a
+	// modded MonsterDefinition works exactly like a built-in one.
+	public void Configure(MonsterDefinition definition)
 	{
-		MovementType = movementType;
-
-		if (MovementType == EnemyMovementType.Patroller)
-			_facingDirection = Vector2.Right;
+		Definition = definition;
+		_movementBehavior = EnemyMovementBehaviors.Create(definition.MovementBehaviorId);
+		_health = definition.Health;
+		_maxHealth = definition.Health;
+		Attack = new AttackState(definition.PrimaryAttack);
+		_facingDirection = _movementBehavior.InitialFacingDirection;
 	}
 
 	public override void _Ready()
@@ -56,12 +48,11 @@ public partial class Enemy : CharacterBody2D, ICombatant
 			},
 			Color = Colors.Yellow,
 			ZIndex = 1,
-			Visible = MovementType != EnemyMovementType.Stationary &&
-				MovementType != EnemyMovementType.SlowChaser
+			Visible = _movementBehavior.ShowsFacingIndicatorInitially
 		};
 
 		AddChild(_facingIndicator);
-		SetFacingDirection(_facingDirection);
+		UpdateFacingIndicatorRotation();
 		ApplyTypeDisplay();
 		CreateHealthDisplay();
 	}
@@ -74,7 +65,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 			_health = 0;
 
 		UpdateHealthDisplay();
-		GD.Print($"{Name} health: {_health}/{MaxHealth}");
+		GD.Print($"{Name} health: {_health}/{_maxHealth}");
 
 		if (_health <= 0)
 		{
@@ -83,125 +74,38 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		}
 	}
 
-	public void PrepareNextMove(Vector2 playerPosition)
-	{
-		if (MovementType != EnemyMovementType.SlowChaser)
-			return;
-
-		Vector2 difference = playerPosition - Position;
-
-		if (difference.IsZeroApprox())
-			return;
-
-		if (Mathf.Abs(difference.X) > Mathf.Abs(difference.Y))
-			_facingDirection = new Vector2(Mathf.Sign(difference.X), 0);
-		else
-			_facingDirection = new Vector2(0, Mathf.Sign(difference.Y));
-
-		SetFacingDirection(_facingDirection);
-
-		_facingIndicator.Visible = true;
-	}
-
 	public void TakeTurn(
 		Player player,
 		HashSet<Vector2> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
-		switch (MovementType)
-		{
-			case EnemyMovementType.SlowChaser:
-				TakeSlowChaserTurn(
-					player,
-					occupiedEnemyPositions,
-					combatants
-				);
-				break;
-
-			case EnemyMovementType.Patroller:
-				TakePatrollerTurn(
-					occupiedEnemyPositions,
-					combatants
-				);
-				break;
-
-			case EnemyMovementType.LeftTurner:
-				TakeTurningWalkerTurn(
-					occupiedEnemyPositions,
-					combatants,
-					turnRight: false
-				);
-				break;
-
-			case EnemyMovementType.RightTurner:
-				TakeTurningWalkerTurn(
-					occupiedEnemyPositions,
-					combatants,
-					turnRight: true
-				);
-				break;
-
-			case EnemyMovementType.Stationary:
-				break;
-		}
-	}
-
-	private void TakeSlowChaserTurn(
-		Player player,
-		HashSet<Vector2> occupiedEnemyPositions,
-		IReadOnlyList<ICombatant> combatants)
-	{
-		if (!_slowChaserHasPreparedMove)
-		{
-			// Preparing is the entire action for this turn.
-			PrepareNextMove(player.Position);
-			_slowChaserHasPreparedMove = true;
-			return;
-		}
-
-		// Moving uses the direction locked during the previous turn.
-		TryMoveForward(
+		_movementBehavior.TakeTurn(
+			this,
+			player,
 			occupiedEnemyPositions,
 			combatants
 		);
-		_slowChaserHasPreparedMove = false;
-		_facingIndicator.Visible = false;
 	}
 
-	private void TakePatrollerTurn(
+	void IEnemyMovementHost.SetFacingDirection(Vector2 direction)
+	{
+		_facingDirection = direction;
+		UpdateFacingIndicatorRotation();
+	}
+
+	void IEnemyMovementHost.SetFacingIndicatorVisible(bool visible)
+	{
+		_facingIndicator.Visible = visible;
+	}
+
+	void IEnemyMovementHost.TurnLeft() => TurnLeft();
+	void IEnemyMovementHost.TurnRight() => TurnRight();
+
+	EnemyMoveResult IEnemyMovementHost.TryMoveForward(
 		HashSet<Vector2> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
-		ForwardActionResult result =
-			TryMoveForward(
-				occupiedEnemyPositions,
-				combatants
-			);
-
-		if (result == ForwardActionResult.Blocked)
-			TurnRight();
-	}
-
-	private void TakeTurningWalkerTurn(
-		HashSet<Vector2> occupiedEnemyPositions,
-		IReadOnlyList<ICombatant> combatants,
-		bool turnRight)
-	{
-		ForwardActionResult result =
-			TryMoveForward(
-				occupiedEnemyPositions,
-				combatants
-			);
-
-		// An attack consumes the entire beat.
-		if (result == ForwardActionResult.AttackAction)
-			return;
-
-		// Otherwise turning is the second action, even if movement was blocked.
-		if (turnRight)
-			TurnRight();
-		else
-			TurnLeft();
+		return TryMoveForward(occupiedEnemyPositions, combatants);
 	}
 
 	private void TurnLeft()
@@ -210,7 +114,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 			_facingDirection.Y,
 			-_facingDirection.X
 		);
-		SetFacingDirection(_facingDirection);
+		UpdateFacingIndicatorRotation();
 	}
 
 	private void TurnRight()
@@ -219,10 +123,10 @@ public partial class Enemy : CharacterBody2D, ICombatant
 			-_facingDirection.Y,
 			_facingDirection.X
 		);
-		SetFacingDirection(_facingDirection);
+		UpdateFacingIndicatorRotation();
 	}
 
-	private ForwardActionResult TryMoveForward(
+	private EnemyMoveResult TryMoveForward(
 		HashSet<Vector2> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
@@ -244,7 +148,7 @@ public partial class Enemy : CharacterBody2D, ICombatant
 			GD.Print(
 				$"{Name} {actionText} {Attack.Definition.Name}."
 			);
-			return ForwardActionResult.AttackAction;
+			return EnemyMoveResult.AttackAction;
 		}
 
 		Vector2 nextPosition =
@@ -253,55 +157,30 @@ public partial class Enemy : CharacterBody2D, ICombatant
 		if (IsWallAt(nextPosition) ||
 			occupiedEnemyPositions.Contains(nextPosition))
 		{
-			return ForwardActionResult.Blocked;
+			return EnemyMoveResult.Blocked;
 		}
 
 		Position = nextPosition;
-		return ForwardActionResult.Moved;
+		return EnemyMoveResult.Moved;
 	}
 
 	private void ApplyTypeDisplay()
 	{
 		Sprite2D sprite = GetNode<Sprite2D>("Sprite2D");
-		sprite.Texture = GD.Load<Texture2D>(GetTypeTexturePath());
+		sprite.Texture = MonsterSpriteLoader.Load(Definition.SpritePath);
 		sprite.Modulate = Colors.White;
-
-		string typeLabel = MovementType switch
-		{
-			EnemyMovementType.SlowChaser => "SLOW",
-			EnemyMovementType.Patroller => "PATROL",
-			EnemyMovementType.LeftTurner => "LEFT",
-			EnemyMovementType.RightTurner => "RIGHT",
-			_ => "STILL"
-		};
 
 		Label label = new()
 		{
 			Position = new Vector2(-28, 17),
 			Size = new Vector2(56, 18),
-			Text = typeLabel,
+			Text = Definition.Name,
 			HorizontalAlignment = Godot.HorizontalAlignment.Center,
 			ZIndex = 2
 		};
 		label.AddThemeFontSizeOverride("font_size", 10);
 		label.AddThemeColorOverride("font_color", Colors.White);
 		AddChild(label);
-	}
-
-	private string GetTypeTexturePath()
-	{
-		return MovementType switch
-		{
-			EnemyMovementType.SlowChaser =>
-				"res://Art/Actors/enemy_slow_chaser.png",
-			EnemyMovementType.Patroller =>
-				"res://Art/Actors/enemy_patroller.png",
-			EnemyMovementType.LeftTurner =>
-				"res://Art/Actors/enemy_left_turner.png",
-			EnemyMovementType.RightTurner =>
-				"res://Art/Actors/enemy_right_turner.png",
-			_ => "res://Art/Actors/enemy_stationary.png"
-		};
 	}
 
 	private void CreateHealthDisplay()
@@ -326,12 +205,12 @@ public partial class Enemy : CharacterBody2D, ICombatant
 
 	private void UpdateHealthDisplay()
 	{
-		_healthLabel.Text = $"{_health}/{MaxHealth}";
+		_healthLabel.Text = $"{_health}/{_maxHealth}";
 	}
 
-	private void SetFacingDirection(Vector2 direction)
+	private void UpdateFacingIndicatorRotation()
 	{
-		_facingIndicator.Rotation = direction.Angle();
+		_facingIndicator.Rotation = _facingDirection.Angle();
 	}
 
 	private bool IsWallAt(Vector2 position)

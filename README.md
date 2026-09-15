@@ -24,6 +24,15 @@ Camera controls:
 Weapon selection currently uses buttons. Explicit keyboard focus
 and navigation remain to be completed.
 
+## Monsters
+
+Monster stats, sprite, movement, and attacks are data (`MonsterDefinition`),
+not hard-coded per enemy type. The five built-in enemies and any monster
+supplied by a mod under `mods/` go through the same `Enemy` scene. See
+[Modding: monsters](docs/MODDING.md) for the JSON format, the current set of
+reusable movement behaviors and attack patterns, and the mod system's
+limitations.
+
 ## Dungeon implementation
 
 The game already generates a seeded, connected dungeon using room
@@ -70,6 +79,7 @@ The migration is proposed and is not yet complete.
 - [Game design](docs/GAME_DESIGN.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Next steps](docs/NEXT_STEPS.md)
+- [Modding: monsters](docs/MODDING.md)
 
 ## Current limitations
 
