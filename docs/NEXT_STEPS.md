@@ -1,118 +1,105 @@
 # Next Steps
 
-Status: proposed roadmap awaiting approval.
+Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (UTC). Implemented status is based on source inspection.
 
-## 1. Unify terrain authority (done)
+This roadmap separates completed foundation work from planned changes. Save/resume and 10-turn diagnostics are agreed design direction, not implemented features.
 
-Remove enemy wall-node scanning.
-Use DungeonMap for all actor terrain checks.
+## Completed foundation
 
-Acceptance:
-- Player and enemies agree on blocked cells.
-- Empty and out-of-bounds cells block movement.
-- Existing turn timing remains unchanged.
+- Shared DungeonMap blocking: Main injects the same query into enemies.
+- DigResolver and separate Basic Shovel; destructible walls become floor.
+- Distinct breakable-wall brick texture and DungeonRenderer.RefreshCell.
+- Door IsOpen state and visual removal for player/enemy occupancy; doors remain walkable before opening.
+- Keyboard weapon selection with initial focus, arrow neighbors, confirm and 1/2 shortcuts.
+- Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods.
+- 29 test methods covering generation, weapons, digging, disabled dynamic terrain, and mod loading.
 
-Enemy no longer scans a "walls" scene group; Main injects a
-DungeonMap-backed `IsWallAt` delegate into each enemy via `Configure`,
-the same query the player already uses.
+Tree/growing walls remain disabled in generation and the turn loop. Do not re-enable them incidentally. Full turns, save/load and debug export have no implementation or tests yet.
 
-## 2. Extract actor state
+## 1. Authoritative actor state and grid combat
 
-Add authoritative integer positions, health, facing, and action state.
-Convert combat calculations from pixels to cells.
+Add ActorState and GameState with instance IDs, GridPosition, health, facing, equipment and attack/behavior state. Convert combat and occupancy to cells. Preserve existing monster IDs and behavior factories; add stable weapon/tool IDs.
 
-Acceptance:
-- Actor rules work without Godot nodes.
-- Visual positions do not affect targeting or occupancy.
-- Existing weapon tests are preserved in grid coordinates.
+Acceptance: rules no longer read node positions; views derive positions from state; definitions remain separate from runtime data; a slow chaser's prepared move can be captured explicitly.
 
-## 3. Extract complete turns
+Risks: coordinate rotation, duplicate actor occupancy, lost private AI state, shared definition mutation.
 
-Introduce GameState, TurnResolver, and a small EnemyBrain.
-Keep sequential enemy execution and current behavior.
+## 2. Complete-turn execution
 
-Acceptance:
-- Complete turns run in NUnit.
-- Dead enemies never act.
-- Slow-chaser timing and turning behavior are preserved.
-- Wall bumps retain their current turn cost.
+Extract TurnResolver and adapt existing movement behaviors to state-based decisions/outcomes. Keep attack -> dig -> move/bump priority, sequential enemy order, door-on-occupancy behavior, and early victory/death semantics.
 
-## 4. Complete terrain interactions
+Acceptance: plain NUnit tests cover complete turns, dead enemies never act, later enemies stop after player death, and each consumed command has exactly one completion boundary even on terminal turns.
 
-Add closed/open door state, digging, changed-cell rendering,
-and a distinct breakable-wall appearance.
+Risks: extra enemy phases, chaser timing changes, turning after attacks, node-deletion timing leaking into rules. Keep dynamic terrain disabled.
 
-Proposed behavior:
-- Door entry opens and moves in one action.
-- Digging consumes a turn without movement.
+## 3. Snapshot capture and 10-turn debug history
 
-Acceptance:
-- Map state and graphics agree.
-- Both actors see changes immediately.
-- Solid walls remain indestructible.
+Implement independent full snapshots and a bounded history using [the snapshot contract](SAVE_AND_DEBUG_HISTORY.md). Store 10 transitions plus their initial state, with 2D cells, actor details, commands and structured outcomes. Add Export Debug History during play and on the end screen.
 
-## 5. Complete keyboard flow and feedback
+Acceptance: advancing the live game does not alter past snapshots; at turn 25 the retained states are 15..25; terminal turns are retained; exported JSON explains a blocked/prepared actor; export consumes no turn/RNG.
 
-Add initial weapon-menu focus, arrow navigation, confirmation,
-and a wait command.
+Risks: shallow copies, transposed rows, wrong retention count, omitting the last death/win turn, treating snapshots as screenshots or replay.
 
-Acceptance:
-- Selection works without a mouse.
-- One input produces at most one gameplay command.
-- Menu confirmation does not also move the player.
-- Presentation does not modify simulation state.
+## 4. Current-run save/resume
 
-## 6. Reproduce full encounters
+Reuse snapshot data with a versioned save envelope and explicit restore mapping. Restore actual terrain, actors, equipment and intent before building fresh views. Save at setup and completed turns; keep a backup and safe file replacement. Retain persistent profile data separately when introduced later.
 
-Record a run seed/configuration and seed initial spawning.
-Expand generation tests across a fixed seed set.
+Acceptance: save/load plus the next command matches uninterrupted execution; an opened door and destroyed wall stay changed; terminal status persists; corrupt/incompatible saves do not overwrite a valid run.
 
-Acceptance:
-- Same setup reproduces terrain and actors.
-- Spawns are legal, unique, and in permitted zones.
-- Required areas remain accessible through legal interactions.
+Risks: fresh generation overwriting loaded state, missing mod definitions, stale asynchronous writes, reset preparation or RNG, duplicate view nodes. Do not promise exact random continuation until active RNG state is restorable.
 
-## 7. Implement floor objectives
+## 5. Reproducible encounter setup and mod compatibility
 
-Separate room clearing from floor and run completion.
-Give the exit a gameplay function.
+Seed spawning, sort content enumeration, detect duplicate IDs, record definition fingerprints, and introduce an explicit spawn budget so adding definitions does not require one enemy per definition. Resolve the exported-build mod path and validate missing/changed content for resume.
 
-Acceptance:
-- Killing the last enemy does not bypass the intended exit flow.
-- Each transition occurs once.
-- Previous-floor state is removed correctly.
+Acceptance: same seed/config/content yields the same terrain, roster/order and positions; overfull rooms are handled; saves report incompatible required content clearly. Add fixed-seed generation and spawn coverage.
 
-## 8. Expand tactical content
+Risks: changed RNG consumption, filesystem order, spawn exhaustion, silently altered saved enemy behavior. Implement minimum ID/fingerprint validation in milestone 4 before relying on modded saves.
 
-Add one non-linear weapon and one enemy that navigates obstacles.
+## 6. Input and presentation integration
 
-Acceptance:
-- Attack blocking and target order are explicit.
-- Navigation respects current terrain.
-- Existing enemy identities remain unchanged.
+Keep the implemented arrow-key menu. Add explicit wait and a clear input policy around animations. Rebuild views safely on load and refresh neighboring terrain art when required.
 
-## 9. Add difficulty and run rewards
+Acceptance: one input means at most one command; selection does not also move; wait consumes a turn; visual motion cannot affect combat; load/restart have no duplicate nodes.
 
-Introduce a small RunConfig and one useful reward/spending loop.
+Risks: input leakage, double turns, stale cell graphics and animations controlling state.
 
-Acceptance:
-- Modifiers are applied once.
-- Shared definitions are not mutated.
-- Rewards cannot be granted twice.
+## 7. Floor objectives and transitions
 
-## 10. Add persistent progression
+Separate room clear, floor exit and run completion. Define the exit requirement. Include floor identity in saves and history. Previous-floor persistence is only needed if backtracking becomes a feature.
 
-Save one unlock and one cosmetic purchase first.
+Acceptance: last-enemy death cannot bypass the chosen exit rule; each transition happens once; debug records across floors identify their maps.
 
-Acceptance:
-- Save/load preserves ownership and balances.
-- Missing fields receive defined defaults.
-- Temporary run effects do not become permanent.
+Risks: premature victory, losing relevant floor state, incompatible save schema changes.
+
+## 8. Tactical content and one environment experiment
+
+Add one non-linear attack or obstacle-aware enemy with explicit blocking rules. After state/turn capture is stable, experiment with one timed hazard or revisit disabled changing walls in a small test map; keep this separate from enabling it in procedural runs.
+
+Acceptance: intent is readable, navigation uses current terrain, environment changes occur at most once per turn before capture, and timers/RNG survive save/load if activated.
+
+Risks: pattern occlusion, actor trapping, inaccessible routes, snapshotting before hazards finish. See [Gameplay ideas](Turn_Dungeon_Gameplay_Ideas.md) for optional content.
+
+## 9. Difficulty and run rewards
+
+Add a small RunConfig and one useful reward/spending loop. Include configuration and rewards in run snapshots.
+
+Acceptance: modifiers apply once, definitions remain unchanged, and rewards cannot be duplicated by loading.
+
+Risks: double modifiers/rewards and unbalanced content combinations.
+
+## 10. Persistent progression
+
+Save one unlock and one cosmetic purchase first, independently of run save/history.
+
+Acceptance: save/load preserves balances and ownership; defaults are defined; temporary effects do not persist; loading a run does not roll back or duplicate profile rewards.
+
+Risks: currency loss, purchase duplication and run/profile disagreement.
 
 ## Change discipline
 
-- Keep each milestone reviewable.
-- Separate behavior-preserving refactors from gameplay changes.
-- Add tests for rules and regressions, not private implementation details.
-- Update documentation when implemented behavior changes.
-- Keep the existing generator until a concrete design need exceeds it.
+- Keep documentation aligned with code; mark proposals and disabled experiments explicitly.
+- Preserve current rules during architectural refactors; gameplay changes get separate review.
+- Run relevant behavior tests for code changes. Documentation changes need link/status checks, not new runtime tests.
+- No ECS, global event bus, DI framework, generic effect language or full replay engine.
+- Keep full copied snapshots and the existing generator until a concrete requirement justifies more complexity.

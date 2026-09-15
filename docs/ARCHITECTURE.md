@@ -1,169 +1,111 @@
 # Architecture
 
-Status: records the current design and proposed migration.
+Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (UTC). Status describes source inspection, not a runtime test.
 
-## Current design
+## Current implementation
 
-Main creates the dungeon, actors, camera, and UI.
-It receives Player.MoveRequested and executes player and enemy actions.
+| Source | Responsibility and remaining coupling |
+| --- | --- |
+| `Scripts/Game/Main.cs` | Builds map, actors, mod spawn pool, UI and camera; executes player/enemy turns; handles digging, door refresh, victory and restart. |
+| `Scripts/Actors/Player.cs` | Godot input, health, weapon/tool state, pixel movement and facing display. |
+| `Scripts/Actors/Enemy.cs` | Holds monster definition and behavior instance; health, attack execution, pixel movement, labels, facing and QueueFree lifecycle. |
+| `Scripts/Dungeon/DungeonMap.cs` | Engine-independent cells, integer GridPosition, zones, durability, IsOpen, and disabled dynamic terrain timers/randomness. |
+| `Scripts/Dungeon/DungeonGenerator.cs`, `ZoneTemplate.cs` | Seeded connected layout and transformed room templates. |
+| `Scripts/Dungeon/DigResolver.cs` | Engine-independent tool damage against destructible terrain. |
+| `Scripts/Dungeon/DungeonRenderer.cs` | Cell-to-node lookup, initial render and RefreshCell; loads visuals from map state. |
+| `Scripts/Combat/AttackDefinition.cs`, `AttackResolver.cs` | Shared attack configuration, per-actor preparation and damage resolution through ICombatant; still use Godot Vector2 pixel coordinates. |
+| `Scripts/Weapons/WeaponDefinition.cs`, `Scripts/Equipment/EquipmentDefinition.cs` | Two weapon definitions and independent digging tool; no stable weapon/tool IDs yet. |
+| `Scripts/Monsters/*` | Stable monster IDs, attack-pattern IDs, behavior factories and sprite loading. Behavior APIs still reference Player, Godot vectors and visual methods. |
+| `Scripts/Modding/MonsterModLoader.cs` | File/JSON parsing and definition validation; loaded definitions join the built-in spawn list. |
 
-Player and Enemy are CharacterBody2D nodes containing both gameplay
-state and visual behavior.
+Terrain queries are already unified: Main injects its DungeonMap-backed IsWallAt delegate into Enemy.Configure. Do not reintroduce scene-wall scanning.
 
-DungeonMap, DungeonGenerator, and ZoneTemplate are engine-independent.
+Digging, door visual removal, changed-cell rendering, and keyboard weapon selection are implemented. The remaining core problem is actor and turn state living in nodes, not missing map infrastructure.
 
-AttackResolver is separated from actor classes through ICombatant,
-but combat positions use Godot Vector2 pixel coordinates.
+## State authority and target responsibilities
 
-DungeonRenderer creates visuals from map data once and can refresh
-individual cells (destroyed walls, opened doors) after generation.
-Player and enemies both query DungeonMap for terrain blocking.
+The live source of truth will be ordinary in-memory C# objects. JSON is the storage/export representation of a copied snapshot. Gameplay never parses JSON per action and never derives state from sprite positions.
 
-## Main problem
+| Component | Target responsibility |
+| --- | --- |
+| GameState | Map, actors, stable execution order, turn number, run status, and run configuration/seed references. |
+| ActorState | Unique instance ID, definition ID, integer position, health, facing, equipment, attack preparation and enemy behavior state. |
+| TurnResolver | Validate commands and execute complete turns; return structured outcomes and changed actor/cell IDs. |
+| Existing movement behaviors | Retain behavior IDs/factories, migrate decisions to state and explicit outcomes. Remove Player/node/visual dependencies. Do not add a competing EnemyBrain registry. |
+| AttackResolver / DigResolver | Apply combat and digging rules against authoritative state. |
+| DungeonMap / DungeonGenerator | Keep current map and generation responsibilities. |
+| Main, actor views, DungeonRenderer, UI | Assemble the run, translate input, display state/results, manage camera and presentation. |
+| Snapshot capture | Copy complete committed state into versioned, serializable data. No live references. |
+| RunSaveService (planned) | Serialize/validate/load the current run, safely replace saves and retain a backup. |
+| DebugHistory (planned) | Retain the last 10 turn transitions and starting state; export human/AI-readable JSON. |
+| Later progression storage | Save persistent unlocks, balances and cosmetic ownership separately from a run. |
 
-Gameplay has multiple spatial authorities:
-
-- DungeonMap for terrain walkability (now shared by player and enemies).
-- Actor node positions for occupancy and attacks.
-
-Terrain changes and animation require one authoritative game state.
-
-## Target responsibilities
-
-- Main: setup, view wiring, restart, and floor transitions.
-- GameState: map, actors, turn number, and run status.
-- ActorState: identity, grid position, health, facing, and action state.
-- TurnResolver: command validation and complete turn execution.
-- EnemyBrain: behavior decisions and intent.
-- AttackResolver: attack rules and damage.
-- DungeonMap: terrain queries and transitions.
-- DungeonGenerator: seeded map creation.
-- DungeonRenderer: create and refresh cell visuals.
-- Actor views: display state and animate results.
-- Input/UI controller: translate controls into commands.
-
-Later:
-- RunConfig: difficulty and run options.
-- ProgressionState: persistent currencies and unlocks.
-
-## Dependency rules
-
-Gameplay rules must not read scene positions, wall nodes, labels,
-textures, or Godot deletion status.
-
-Actor positions use GridPosition.
-Tile size and pixel conversion belong to presentation.
-
-Gameplay may mutate state during resolution.
-Views receive the resulting state and a small TurnResult.
-
-Use direct method calls and returned values.
-No global event bus or dependency injection framework is required.
+These are responsibilities, not a requirement for an interface or separate project per row. Use direct calls and small data objects. Rendering, saving and debug export consume the same state; they do not own alternative gameplay copies.
 
 ## Turn contract
 
-1. Validate input and run status.
-2. Resolve the player action.
-3. Apply immediate deaths and completion checks.
-4. Execute surviving enemies in stable order.
-5. Each enemy reads the state after previous actions.
-6. Stop if the player dies.
-7. Finalize turn state and return presentation results.
+Preserve the current sequence during extraction:
 
-Preserve current behavior during extraction.
-Changes to turn costs or victory conditions belong in separate changes.
+1. Reject gameplay input before selection or after game end.
+2. Resolve a pending/detected attack; otherwise try adjacent digging; otherwise move or bump.
+3. On player movement, update zone membership and open any door at the destination.
+4. Remove defeated enemies and check global victory. Victory can end the turn before enemies act.
+5. Execute surviving enemies in stable order, each reading the updated state. Open the door at each enemy's resulting position. Stop on player death.
+6. Finalize removals and victory checks.
+7. Proposed single completion boundary: increment turn, capture state and structured outcomes, append debug history, enqueue autosave, and update presentation. This must also run on terminal turns that skip the enemy phase.
 
-## Entity lifecycle
+Blocked movement and digging consume a turn. Menus and camera controls do not. Wait is not yet implemented. Snapshot work must not add another enemy phase.
 
-Health determines whether an actor is alive.
-Dead actors immediately stop blocking and acting as required by rules.
+An optional environment phase belongs before final capture if later enabled. Main currently never calls DungeonMap.AdvanceTurn; keep that disabled during extraction.
 
-Visual deletion or death animations do not control gameplay lifetime.
+## Actor lifecycle and AI state
 
-## Terrain
+Actor health/alive state must determine turn eligibility and occupancy, independently of QueueFree or animations. An actor killed during the player action must not act later that turn.
 
-DungeonMap owns terrain state and durability.
-Both factions query it for movement and attack blocking.
+Use GridPosition throughout simulation. Convert to pixels only in views. Preserve order explicitly; JSON object iteration or node order must not determine enemy execution.
 
-Door opening and destruction return changed cell coordinates.
-DungeonRenderer refreshes those cells and affected visual neighbors.
+ChasePlayerBehavior currently stores `_hasPreparedMove` privately, while facing lives on Enemy. Move both into capturable actor behavior state. Saving only coordinates would make a chaser prepare again after load. AttackState's preparing flag, remaining turns and locked direction also matter even when currently equipped attacks have zero preparation.
 
-Some terrain can change on its own: `DungeonMap.AdvanceTurn` counts
-down destroyed regrowable terrain (tree walls) and converts a cell
-back once its timer expires, deferring if an actor currently occupies
-that cell; every few calls it also spreads one growing-wall cell into
-one adjacent floor cell, never onto an occupied one. It returns the
-changed cells so a caller can refresh just those through
-DungeonRenderer, the same pattern used for digging and door-opening.
+## Terrain and rendering
 
-This is currently disabled: no zone template places a TreeWall or
-GrowingWall cell, and Main does not call AdvanceTurn. The mechanic
-stays covered by Tests/DynamicTerrainTests.cs, which builds small maps
-directly rather than through generation. Re-enabling it means adding
-a template symbol for each kind and calling AdvanceTurn once per
-completed turn again.
+DungeonCell already has IsOpen. Doors remain walkable whether open or not; player and enemies both reveal/open them on occupancy. Preserve this rule. Blocking/locked doors are a later gameplay decision, not a required refactor.
 
-Zone connections describe generated layout.
-Actual traversal depends on current cells.
+DigResolver damages terrain; destruction becomes floor. DungeonRenderer.RefreshCell clears and rebuilds that cell. It does not refresh neighbors automatically, and repeated Render calls append nodes: loading must create a fresh view or explicitly clear it. If a mutation changes neighboring wall art, refresh those neighbors too.
 
-## Combat definitions
+TreeWall/GrowingWall code exists but is disabled in the playable loop. Future snapshots must include pending regrowth kind/countdown, terrain turn counter and resumable terrain RNG state if this mechanic is enabled. Those values are currently private and no persistence API exists. Do not assume a default serializer captures them.
 
-Keep weapon definitions separate from attack execution.
-Keep preparation state per actor.
-Protect shared definition collections from mutation.
+Zone connections describe generation; current cells determine traversal. Neutral shared boundaries need not become new room objects.
 
-Current sword patterns are ordered lines.
-Define new occlusion rules before introducing area patterns.
+## Combat, equipment and mods
 
-## Monster definitions
+Keep definitions separate from per-actor runtime state. Protect shared offset collections when converting combat to grid coordinates. Ordered-line wall blocking remains suitable for swords; define occlusion before adding sweeps or area patterns.
 
-MonsterDefinition (Scripts/Monsters) separates monster data - stats, sprite,
-movement behavior id, attacks - from Enemy, the node that displays and runs
-it. Movement behaviors (IEnemyMovementBehavior) are registered by string id
-so a monster references one instead of Enemy hard-coding a switch.
+Preserve MonsterDefinition.Id, movement IDs and attack-pattern IDs through the migration. Add stable weapon/tool IDs before saving them; display names are not durable keys. Only MonsterDefinition.PrimaryAttack (the first attack) is currently used. StatusEffectId and LootTableId are metadata without consumers.
 
-Enemy still contains both gameplay and visual behavior (see "Current
-design" and "Main problem" above); this only removed the per-type hard-coding,
-it did not extract Enemy's gameplay state onto ActorState. That extraction is
-still open (see Migration).
+Mod loading uses unsorted directory/file enumeration and has no duplicate-ID check. Reproducible setup and save compatibility require stable ordering, unique definitions and content fingerprints. Missing/changed required definitions must produce a clear load error rather than silently resetting actors. Details: [Modding](MODDING.md).
 
-MonsterModLoader (Scripts/Modding) reads the same MonsterDefinition shape
-from mod JSON under mods/, so built-in and modded monsters spawn through one
-path. See docs/MODDING.md for the format and current limitations.
+## Saving and recent-turn diagnostics
 
-## Determinism
+See [Save and debug history](SAVE_AND_DEBUG_HISTORY.md) for the shared snapshot contract. Neither feature is implemented yet.
 
-A reproducible run setup needs map generation and spawn randomness
-derived from a recorded seed and configuration.
+- Resume: one committed current-run snapshot plus backup; reload actual mutated terrain and actors.
+- Debug history: last 10 completed turn transitions, represented by up to 11 independent state snapshots plus commands and ordered outcomes.
+- Debug export is inspectable evidence, not exact replay, screenshots, undo, or a previous-floor archive.
+- Snapshot once at the stable boundary. Background serialization uses an immutable copy, never the live mutable graph.
+- Keep state authority in C#; exporting or redrawing must not advance the simulation or consume RNG.
 
-Stable actor order is part of turn behavior.
-Long-term compatibility across generator versions is not guaranteed.
+The map seed currently reproduces generation only. Main's random spawn positions are separately randomized. Record actual state now; establish reproducible setup and restorable runtime RNG before claiming deterministic continuation of random mechanics.
 
-## Migration
+## Migration order
 
-1. ~~Remove enemy scene-based terrain queries.~~ Done: Enemy takes a
-   DungeonMap-backed wall-query delegate from Main instead of scanning
-   a "walls" scene group.
-2. Introduce authoritative actor grid state.
-3. Convert combat to grid coordinates.
-4. Extract turn execution and enemy decisions.
-5. Add changed-cell rendering.
-6. Implement terrain interactions.
+Completed: shared map blocking, digging/tool separation, cell refresh, door opening graphics, keyboard weapon menu, monster definitions and reusable behaviors.
 
-Do not combine migration with combat rebalancing.
+Next: integer actor state and grid combat; extract complete turns using the existing behavior registry; capture snapshots and 10-turn history; implement versioned run save/resume. Keep gameplay rules unchanged throughout. See [Next steps](NEXT_STEPS.md).
 
-## Testing
+## Verification and deferred work
 
-Use NUnit for simulation and generator behavior.
-Add a small set of Godot integration checks for input, views, and restart.
+There are 29 test methods: generator/terrain 8, weapon 6, digging 3, dynamic terrain 4, mod loader 8. Source inspection only in this documentation review; no test execution claim.
 
-Current tests cover generator properties and basic sword attacks.
-Complete-turn, enemy behavior, and presentation integration coverage
-still need to be added.
+Highest-value additions: full turns/death/order, chaser intent, grid/visual independence, snapshot copy isolation, history rollover, save/load next-turn equivalence, terrain restoration, mod compatibility and failed-save backup recovery. Use small Godot checks for focus, door art and loading views.
 
-## Deferred architecture
-
-No ECS, generic ability framework, room streaming, rollback system,
-or universal inventory framework.
-
-Keep classes concrete until an actual second implementation is needed.
+No ECS, global event bus, DI framework, generic ability scripting, room streaming or full replay system. Keep full snapshots until measured size justifies a different representation.

@@ -1,5 +1,7 @@
 # Modding: monsters
 
+Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (UTC). Implemented status is based on source inspection.
+
 Monsters are data (`MonsterDefinition`), not hard-coded C# classes. The five
 built-in enemies (`Scripts/Monsters/MonsterDefinitions.cs`) and any monster a
 mod provides are the same shape and go through the same `Enemy` scene, so a
@@ -8,8 +10,8 @@ mod can add a new monster without writing or compiling any code.
 There are two tiers, matching how much a mod needs to touch:
 
 - **Data-only monsters** (documented here): combine an id, stats, a sprite,
-  and existing movement/attack building blocks. Safe by construction - a bad
-  file gets disabled with a readable error instead of crashing the game.
+  and existing movement/attack building blocks. The loader rejects several invalid definitions with readable errors.
+  Validation is not complete; see the limitations below.
 - **Scripted monsters** (custom behavior via a mod API) are not implemented.
   They would need a real security/compatibility story first, so they're
   intentionally out of scope until the data-only path has proven itself.
@@ -38,8 +40,7 @@ At startup, `Main` calls `MonsterModLoader.LoadFromDirectory` against
 4. Adds every successfully loaded monster to the same spawn pool as the
    built-in roster, so it actually appears in combat zones.
 
-`mod.json` (`id`, `name`, `version`) is read for a mod's own identity but is
-currently informational only - nothing keys off it yet.
+`mod.json` is a suggested manifest placeholder. The current loader does not read it; identity comes from each monster JSON `id`. Manifest/version validation is planned, not implemented.
 
 ## Monster JSON
 
@@ -59,12 +60,12 @@ currently informational only - nothing keys off it yet.
 
 | Field       | Required | Notes                                                                 |
 |-------------|----------|------------------------------------------------------------------------|
-| `id`        | yes      | Stable id. Prefix it with your mod's id (`fire-rat.fire_rat`) so it can never collide with another mod or the built-in `core.*` roster. Saves/generation should reference monsters by this id, never a C# type. |
+| `id`        | yes      | Stable id. Prefix it with your mod's id (`fire-rat.fire_rat`) to reduce collisions with other mods and the built-in `core.*` roster; uniqueness is not currently enforced. Saves/generation should reference monsters by this id, never a C# type. |
 | `name`      | yes      | Display name (shown over the enemy in-game).                          |
 | `health`    | yes      | Must be greater than zero.                                            |
 | `sprite`    | yes      | File name resolved under `<mod>/sprites/`. Must exist.                |
 | `movement`  | yes      | One of the ids below. Anything else disables the monster.             |
-| `attacks`   | yes      | At least one. Each needs a known `pattern` and a positive `damage`.   |
+| `attacks`   | yes      | At least one. Each needs a known `pattern` and positive `damage`; only the first attack currently executes. |
 | `attacks[].effect` | no | Free-form status effect id. Stored on the attack (`AttackDefinition.StatusEffectId`) but **not yet applied by combat** - there's no status-effect system yet, so `"burn"` is currently just a tag for future use. |
 | `lootTable` | no       | Free-form id; nothing consumes it yet.                                |
 
@@ -90,9 +91,7 @@ reference it by id.
 
 ## Validation
 
-A bad monster file never crashes the game or blocks other mods from
-loading. Each `monsters/*.json` is validated independently; a failure
-disables just that file with a message like:
+Parsing errors and the explicit validation failures below disable that file and let other files load. This is not a guarantee for all malformed inputs: for example, a null entry in `attacks` is dereferenced outside the parsing catch. A handled failure produces a message like:
 
 ```
 Fire Rat disabled: unknown movement behavior "chase_players". Expected one of: chase_player, patrol, turn_left, turn_right, stationary.
@@ -110,5 +109,20 @@ each with a known `pattern` and positive `damage`. See
   resolve correctly inside an exported PCK. Before shipping a build, this
   needs to move to something like an executable-relative or `user://` path.
 - No hot-reloading; mods load once at `Main._Ready`.
+- Only the first attack is used by Enemy; a stationary behavior does not invoke attacks.
+- Main currently spawns one enemy per loaded definition. Large mod rosters can exhaust room space.
+- Directory/file enumeration is not sorted, so mod order is not a deterministic contract.
+- Sprite validation checks file existence, not successful image decoding; sprite paths are not constrained to remain inside the mod directory. Directory enumeration errors and null attack entries are not fully handled.
 - No mod-vs-mod id collision detection yet.
 - Scripted (code) mods are not implemented - see the two-tier note above.
+
+
+## Save and diagnostic compatibility (planned)
+
+Run save/resume and recent-turn debug history are not implemented. See [Save and debug history](SAVE_AND_DEBUG_HISTORY.md).
+
+Preserve existing monster, movement and pattern IDs while extracting actor state. Saves need a unique actor instance ID as well as MonsterDefinition.Id, plus explicit per-actor behavior state. Recreating ChasePlayerBehavior alone resets its prepared-move flag.
+
+Before relying on modded run saves, add duplicate-ID checks, stable ordering and content fingerprints. Store required content identity in saves and debug exports. Missing or changed definitions should report a compatibility error; silently replacing them with a built-in monster changes the run.
+
+Debug export should include enough definition information to interpret custom attack geometry and intent without executing mod code. This does not require scripted mods or a general mod API.
