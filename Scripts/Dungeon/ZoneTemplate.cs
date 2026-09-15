@@ -5,6 +5,8 @@ public sealed class ZoneTemplate
 {
 	public const char FloorSymbol = '.';
 	public const char BreakableWallSymbol = 'B';
+	public const char TreeWallSymbol = 'T';
+	public const char GrowingWallSymbol = 'G';
 	public const char BoundarySymbol = '#';
 	public const char DoorSocketSymbol = 'D';
 
@@ -40,6 +42,8 @@ public sealed class ZoneTemplate
 
 				if (symbol != FloorSymbol &&
 					symbol != BreakableWallSymbol &&
+					symbol != TreeWallSymbol &&
+					symbol != GrowingWallSymbol &&
 					symbol != BoundarySymbol &&
 					symbol != DoorSocketSymbol)
 				{
@@ -59,7 +63,9 @@ public sealed class ZoneTemplate
 
 				if (!isBoundary &&
 					symbol != FloorSymbol &&
-					symbol != BreakableWallSymbol)
+					symbol != BreakableWallSymbol &&
+					symbol != TreeWallSymbol &&
+					symbol != GrowingWallSymbol)
 				{
 					throw new ArgumentException(
 						"Template interiors must contain floor or walls."
@@ -184,6 +190,28 @@ public static class ZoneTemplateCatalog
 		"###D###"
 	);
 
+	private static readonly ZoneTemplate Grove = new(
+		"Grove",
+		"###D###",
+		"#.T.T.#",
+		"#.....#",
+		"D..T..D",
+		"#.....#",
+		"#.T.T.#",
+		"###D###"
+	);
+
+	private static readonly ZoneTemplate Overgrowth = new(
+		"Overgrowth",
+		"###D###",
+		"#.....#",
+		"#..G..#",
+		"D.....D",
+		"#.....#",
+		"#.....#",
+		"###D###"
+	);
+
 	private static readonly ZoneTemplate ShopCounter = new(
 		"Shop Counter",
 		"###D###",
@@ -198,7 +226,7 @@ public static class ZoneTemplateCatalog
 	private static readonly IReadOnlyList<ZoneTemplate> StartTemplates =
 		new[] { Open };
 	private static readonly IReadOnlyList<ZoneTemplate> CombatTemplates =
-		new[] { Pillars, Corner, Bars };
+		new[] { Pillars, Corner, Bars, Grove, Overgrowth };
 	private static readonly IReadOnlyList<ZoneTemplate> ShopTemplates =
 		new[] { ShopCounter };
 	private static readonly IReadOnlyList<ZoneTemplate> ExitTemplates =

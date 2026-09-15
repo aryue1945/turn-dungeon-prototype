@@ -732,6 +732,31 @@ public partial class Main : Node2D
 
 		RemoveDefeatedEnemies();
 		CheckForVictory();
+
+		if (!_gameEnded)
+			AdvanceTerrain();
+	}
+
+	// Ticks wall regrowth/growth once per completed turn and refreshes any
+	// cell that changed as a result.
+	private void AdvanceTerrain()
+	{
+		HashSet<GridPosition> occupiedCells = new()
+		{
+			PositionToCell(_player.Position)
+		};
+
+		foreach (Enemy enemy in _enemies)
+		{
+			if (IsEnemyActive(enemy))
+				occupiedCells.Add(PositionToCell(enemy.Position));
+		}
+
+		IReadOnlyList<GridPosition> changedCells =
+			_dungeonMap.AdvanceTurn(occupiedCells);
+
+		foreach (GridPosition cell in changedCells)
+			_dungeonRenderer.RefreshCell(_dungeonMap, cell.X, cell.Y);
 	}
 
 	private void CheckForVictory()

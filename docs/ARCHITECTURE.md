@@ -88,6 +88,18 @@ Both factions query it for movement and attack blocking.
 Door opening and destruction return changed cell coordinates.
 DungeonRenderer refreshes those cells and affected visual neighbors.
 
+Some terrain also changes on its own. `DungeonMap.AdvanceTurn` runs
+once per completed game turn (called from Main, after the player and
+all enemies have acted) and:
+- Counts down destroyed regrowable terrain (tree walls) and converts
+  the cell back once the timer expires, deferring if an actor
+  currently occupies that cell.
+- Every few turns, spreads one growing-wall cell into one adjacent
+  floor cell, never onto an occupied one.
+
+It returns the changed cells so Main can refresh just those through
+DungeonRenderer, the same pattern used for digging and door-opening.
+
 Zone connections describe generated layout.
 Actual traversal depends on current cells.
 
