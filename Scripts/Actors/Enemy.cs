@@ -46,6 +46,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		Position = pixelPosition;
 		Attack = new AttackState(definition.PrimaryAttack);
 		_state.SetFacing(_movementBehavior.InitialFacingDirection);
+		_state.SetAttack(Attack);
 		_isWallAt = isWallAt;
 	}
 
