@@ -169,6 +169,12 @@ public partial class Main : Node2D
 			case Key.X:
 				OpenExportMenu();
 				break;
+			case Key.R:
+				if (!_gameEnded)
+					return;
+
+				OnRestartPressed();
+				break;
 			default:
 				return;
 		}
@@ -868,15 +874,18 @@ public partial class Main : Node2D
 
 	// Decides whether a resumable save exists at all (per the decision
 	// table, the startup menu only appears when one does - otherwise go
-	// straight to New Run) and whether it represents an unfinished run
-	// (gates the overwrite confirmation later).
+	// straight to New Run). A save whose run already ended (Won/Lost) does
+	// not count as resumable - there is nothing left to continue playing,
+	// so both a fresh launch and a post-Restart reload go straight to a
+	// new run instead of offering to "continue" a finished one.
 	private void ShowStartupMenu()
 	{
 		bool hasResumableSave =
-			_pendingLoadOutcome.Result == SaveFileLoadResult.Loaded ||
-			_pendingLoadOutcome.Result == SaveFileLoadResult.LoadedFromBackup;
+			(_pendingLoadOutcome.Result == SaveFileLoadResult.Loaded ||
+				_pendingLoadOutcome.Result == SaveFileLoadResult.LoadedFromBackup) &&
+			!_pendingLoadOutcome.Envelope.IsComplete;
 
-		_hasUnfinishedResumableRun = hasResumableSave && !_pendingLoadOutcome.Envelope.IsComplete;
+		_hasUnfinishedResumableRun = hasResumableSave;
 
 		if (!hasResumableSave)
 		{
