@@ -58,6 +58,9 @@ public partial class Player : CharacterBody2D, ICombatant
 
 		AddChild(_facingIndicator);
 		SetFacingDirection(Vector2.Down);
+
+		_state.SetAttack(Attack);
+		_state.SetEquipment(Weapon.Id, DiggingTool.Id);
 	}
 
 	public override void _UnhandledInput(InputEvent inputEvent)
@@ -85,11 +88,13 @@ public partial class Player : CharacterBody2D, ICombatant
 	{
 		Weapon = weapon;
 		Attack.Equip(weapon.PrimaryAttack);
+		_state.SetEquipment(Weapon.Id, DiggingTool.Id);
 	}
 
 	public void EquipDiggingTool(DiggingToolDefinition diggingTool)
 	{
 		DiggingTool = diggingTool;
+		_state.SetEquipment(Weapon.Id, DiggingTool.Id);
 	}
 
 	// Called once by Main after generation to set the player's starting

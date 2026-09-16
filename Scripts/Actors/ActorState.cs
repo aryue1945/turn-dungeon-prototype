@@ -10,10 +10,12 @@ using System;
 //
 // This is the ActorState/GameState migration described in
 // docs/ARCHITECTURE.md - a unique instance id, a definition id, GridPosition,
-// health, facing and the one bit of enemy-behavior state (HasPreparedMove)
-// that previously lived only on ChasePlayerBehavior. Equipment references
-// and AttackState are not covered yet - Player/Enemy still hold those
-// directly.
+// health, facing, the one bit of enemy-behavior state (HasPreparedMove) that
+// previously lived only on ChasePlayerBehavior, equipment ids, and a
+// reference to the actor's AttackState. Equipment/Attack are still owned and
+// mutated by Player/Enemy directly (weapon swaps, attack preparation) -
+// ActorState just holds the same references/ids so a reader (GameState,
+// eventually a snapshot) does not need the Godot node to see them.
 public sealed class ActorState
 {
 	public Guid InstanceId { get; } = Guid.NewGuid();
@@ -24,6 +26,9 @@ public sealed class ActorState
 	public bool IsAlive => Health > 0;
 	public Vector2 Facing { get; private set; }
 	public bool HasPreparedMove { get; private set; }
+	public AttackState Attack { get; private set; }
+	public string WeaponId { get; private set; }
+	public string ToolId { get; private set; }
 
 	public ActorState(GridPosition gridPosition, int maxHealth, string definitionId)
 	{
@@ -71,5 +76,22 @@ public sealed class ActorState
 	public void SetHasPreparedMove(bool hasPreparedMove)
 	{
 		HasPreparedMove = hasPreparedMove;
+	}
+
+	// The same AttackState instance the owning Player/Enemy already mutates
+	// (preparation, equip). Call once; reads through ActorState.Attack
+	// automatically see later changes since it is a shared reference, not a
+	// copy.
+	public void SetAttack(AttackState attack)
+	{
+		Attack = attack ?? throw new ArgumentNullException(nameof(attack));
+	}
+
+	// Player-only for now (Enemy has no separate weapon/tool, just its
+	// definition's attack) - call again whenever equipment changes.
+	public void SetEquipment(string weaponId, string toolId)
+	{
+		WeaponId = weaponId;
+		ToolId = toolId;
 	}
 }

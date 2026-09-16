@@ -78,6 +78,37 @@ public sealed class ActorStateTests
 	}
 
 	[Test]
+	public void SetAttack_ExposesTheSameInstance()
+	{
+		ActorState state = CreateState(new GridPosition(0, 0), maxHealth: 1);
+		AttackState attack = new(AttackDefinitions.BasicEnemyStrike);
+
+		state.SetAttack(attack);
+
+		Assert.That(state.Attack, Is.SameAs(attack));
+	}
+
+	[Test]
+	public void SetAttack_RejectsNull()
+	{
+		ActorState state = CreateState(new GridPosition(0, 0), maxHealth: 1);
+		System.Action setNull = () => state.SetAttack(null);
+
+		Assert.Throws<System.ArgumentNullException>(setNull);
+	}
+
+	[Test]
+	public void SetEquipment_StoresWeaponAndToolIds()
+	{
+		ActorState state = CreateState(new GridPosition(0, 0), maxHealth: 1);
+
+		state.SetEquipment("core.basic_sword", "core.basic_shovel");
+
+		Assert.That(state.WeaponId, Is.EqualTo("core.basic_sword"));
+		Assert.That(state.ToolId, Is.EqualTo("core.basic_shovel"));
+	}
+
+	[Test]
 	public void MoveTo_ReplacesGridPosition()
 	{
 		ActorState state = CreateState(new GridPosition(0, 0), maxHealth: 1);
