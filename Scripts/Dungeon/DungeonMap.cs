@@ -156,6 +156,29 @@ public sealed class DungeonCell
 		_regrowTurnsRemaining = 0;
 	}
 
+	// Sets every piece of a cell's saved state directly, for milestone-4
+	// save/resume: unlike SetTerrain, durability/IsOpen are not reset to
+	// terrain defaults, since a restored cell may be mid-damage or an
+	// already-open door. Pending regrowth is intentionally not restored -
+	// dynamic terrain is still disabled (see docs/NEXT_STEPS.md).
+	internal void RestoreState(
+		TerrainKind terrainKind,
+		int durability,
+		bool isOpen,
+		int zoneId,
+		int connectedZoneA,
+		int connectedZoneB)
+	{
+		Terrain = TerrainCatalog.Get(terrainKind);
+		Durability = durability;
+		IsOpen = isOpen;
+		ZoneId = zoneId;
+		ConnectedZoneA = connectedZoneA;
+		ConnectedZoneB = connectedZoneB;
+		_regrowingKind = null;
+		_regrowTurnsRemaining = 0;
+	}
+
 	internal bool Open()
 	{
 		if (Terrain.Kind != TerrainKind.Door || IsOpen)
@@ -490,6 +513,33 @@ public sealed class DungeonMap
 			throw new ArgumentOutOfRangeException();
 
 		cell.SetTerrain(terrainKind);
+	}
+
+	// Milestone-4 save/resume: restores one cell's full saved state. Callers
+	// outside this file reach it only through a Game-layer restore helper
+	// (e.g. rebuilding a map from a GridSnapshot) that knows the save
+	// format - DungeonMap itself stays unaware of GameSnapshot/CellSnapshot.
+	internal void RestoreCell(
+		int x,
+		int y,
+		TerrainKind terrainKind,
+		int durability,
+		bool isOpen,
+		int zoneId,
+		int connectedZoneA,
+		int connectedZoneB)
+	{
+		DungeonCell cell = GetCell(x, y) ??
+			throw new ArgumentOutOfRangeException();
+
+		cell.RestoreState(
+			terrainKind,
+			durability,
+			isOpen,
+			zoneId,
+			connectedZoneA,
+			connectedZoneB
+		);
 	}
 
 	internal void SetZone(int x, int y, int zoneId)
