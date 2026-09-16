@@ -1,3 +1,4 @@
+using Godot;
 using NUnit.Framework;
 
 [TestFixture]
@@ -12,6 +13,37 @@ public sealed class ActorStateTests
 		Assert.That(state.Health, Is.EqualTo(5));
 		Assert.That(state.MaxHealth, Is.EqualTo(5));
 		Assert.That(state.IsAlive, Is.True);
+	}
+
+	[Test]
+	public void Constructor_DefaultsFacingAndHasPreparedMove()
+	{
+		ActorState state = new(new GridPosition(0, 0), maxHealth: 1);
+
+		Assert.That(state.Facing, Is.EqualTo(Vector2.Zero));
+		Assert.That(state.HasPreparedMove, Is.False);
+	}
+
+	[Test]
+	public void SetFacing_ReplacesFacing()
+	{
+		ActorState state = new(new GridPosition(0, 0), maxHealth: 1);
+
+		state.SetFacing(Vector2.Up);
+
+		Assert.That(state.Facing, Is.EqualTo(Vector2.Up));
+	}
+
+	[Test]
+	public void SetHasPreparedMove_TogglesFlag()
+	{
+		ActorState state = new(new GridPosition(0, 0), maxHealth: 1);
+
+		state.SetHasPreparedMove(true);
+		Assert.That(state.HasPreparedMove, Is.True);
+
+		state.SetHasPreparedMove(false);
+		Assert.That(state.HasPreparedMove, Is.False);
 	}
 
 	[Test]

@@ -24,6 +24,7 @@ public partial class Player : CharacterBody2D, ICombatant
 
 	public GridPosition GridPosition => _state.GridPosition;
 	public int Health => _state.Health;
+	public Vector2 Facing => _state.Facing;
 	public bool IsAlive => Health > 0;
 	public CombatFaction Faction => CombatFaction.Player;
 	public WeaponDefinition Weapon { get; private set; } =
@@ -100,6 +101,7 @@ public partial class Player : CharacterBody2D, ICombatant
 
 	private void SetFacingDirection(Vector2 direction)
 	{
+		_state.SetFacing(direction);
 		_facingIndicator.Rotation = direction.Angle();
 	}
 

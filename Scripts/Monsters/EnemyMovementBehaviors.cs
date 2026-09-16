@@ -17,9 +17,11 @@ public interface IEnemyMovementHost
 {
 	GridPosition GridPosition { get; }
 	Vector2 FacingDirection { get; }
+	bool HasPreparedMove { get; }
 
 	void SetFacingDirection(Vector2 direction);
 	void SetFacingIndicatorVisible(bool visible);
+	void SetHasPreparedMove(bool hasPreparedMove);
 	void TurnLeft();
 	void TurnRight();
 
@@ -47,10 +49,13 @@ public interface IEnemyMovementBehavior
 // Chases the player: spends one turn choosing a facing direction toward the
 // player, then the next turn moving (or attacking) along it. Mirrors the
 // former "SlowChaser" enemy type.
+//
+// The behavior instance itself holds no mutable state - "is a move
+// prepared" lives on the host's ActorState (via HasPreparedMove) so it
+// survives independently of this object and can eventually be captured for
+// save/debug history.
 public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 {
-	private bool _hasPreparedMove;
-
 	public Vector2 InitialFacingDirection => Vector2.Down;
 	public bool ShowsFacingIndicatorInitially => false;
 
@@ -60,17 +65,17 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
-		if (!_hasPreparedMove)
+		if (!host.HasPreparedMove)
 		{
 			// Preparing is the entire action for this turn.
 			PrepareMove(host, player.GridPosition);
-			_hasPreparedMove = true;
+			host.SetHasPreparedMove(true);
 			return;
 		}
 
 		// Moving uses the direction locked during the previous turn.
 		host.TryMoveForward(occupiedEnemyPositions, combatants);
-		_hasPreparedMove = false;
+		host.SetHasPreparedMove(false);
 		host.SetFacingIndicatorVisible(false);
 	}
 
@@ -166,9 +171,10 @@ public sealed class StationaryBehavior : IEnemyMovementBehavior
 }
 
 // The registry of movement behavior ids a MonsterDefinition can reference,
-// for both the built-in roster and mod JSON. Each entry is a factory rather
-// than a shared instance because behaviors such as ChasePlayerBehavior carry
-// per-enemy state.
+// for both the built-in roster and mod JSON. Behaviors are stateless now
+// (their per-enemy state lives on the host's ActorState); each entry stays a
+// factory rather than a shared instance for consistency with new behaviors
+// that might reintroduce their own state later.
 public static class EnemyMovementBehaviors
 {
 	private static readonly Dictionary<string, Func<IEnemyMovementBehavior>> Factories = new()

@@ -7,21 +7,21 @@ Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (
 | Source | Responsibility and remaining coupling |
 | --- | --- |
 | `Scripts/Game/Main.cs` | Builds map, actors, mod spawn pool, UI and camera; executes player/enemy turns; handles digging, door refresh, victory and restart. |
-| `Scripts/Actors/Player.cs` | Godot input, weapon/tool state, facing display; owns an `ActorState` (GridPosition, health) and keeps its pixel Position synced from it via `PlaceAt`/`Move`. |
-| `Scripts/Actors/ActorState.cs` | Engine-independent GridPosition and health for one actor. Player and Enemy both treat an instance as authoritative. No instance ID, facing, equipment or attack/behavior state yet - see target shape below. |
-| `Scripts/Actors/Enemy.cs` | Holds monster definition and behavior instance; owns an `ActorState` (GridPosition, health) via `Configure`. Attack execution, pixel movement sync, labels, facing indicator and QueueFree lifecycle remain node-based. |
+| `Scripts/Actors/Player.cs` | Godot input, weapon/tool state, facing indicator display; owns an `ActorState` (GridPosition, health, facing) and keeps its pixel Position and indicator rotation synced from it via `PlaceAt`/`Move`/`SetFacingDirection`. |
+| `Scripts/Actors/ActorState.cs` | Engine-independent GridPosition, health, facing (`Vector2`) and one enemy-behavior flag (`HasPreparedMove`, formerly private on `ChasePlayerBehavior`). Player and Enemy both treat an instance as authoritative. No instance ID, definition ID, equipment or attack-preparation state yet - see target shape below. |
+| `Scripts/Actors/Enemy.cs` | Holds monster definition and behavior instance; owns an `ActorState` (GridPosition, health, facing, prepared-move flag) via `Configure`. Attack execution, pixel movement sync, labels, facing indicator and QueueFree lifecycle remain node-based. |
 | `Scripts/Dungeon/DungeonMap.cs` | Engine-independent cells, integer GridPosition, zones, durability, IsOpen, and disabled dynamic terrain timers/randomness. |
 | `Scripts/Dungeon/DungeonGenerator.cs`, `ZoneTemplate.cs` | Seeded connected layout and transformed room templates. |
 | `Scripts/Dungeon/DigResolver.cs` | Engine-independent tool damage against destructible terrain. |
 | `Scripts/Dungeon/DungeonRenderer.cs` | Cell-to-node lookup, initial render and RefreshCell; loads visuals from map state. |
 | `Scripts/Combat/AttackDefinition.cs`, `AttackResolver.cs` | Shared attack configuration, per-actor preparation and damage resolution through ICombatant. `ICombatant.GridPosition` and `AttackResolver`'s offset math are integer grid coordinates now, not pixel Vector2. |
 | `Scripts/Weapons/WeaponDefinition.cs`, `Scripts/Equipment/EquipmentDefinition.cs` | Two weapon definitions and independent digging tool; no stable weapon/tool IDs yet. |
-| `Scripts/Monsters/*` | Stable monster IDs, attack-pattern IDs, behavior factories and sprite loading. `IEnemyMovementHost`/`IEnemyMovementBehavior` use GridPosition for position but still reference Player, Godot direction vectors and visual methods (`SetFacingIndicatorVisible`, etc). |
+| `Scripts/Monsters/*` | Stable monster IDs, attack-pattern IDs, behavior factories and sprite loading. `IEnemyMovementHost`/`IEnemyMovementBehavior` use GridPosition for position and read/write `HasPreparedMove` through the host (backed by ActorState) instead of a private field; behaviors are now stateless. Still reference Player, Godot direction vectors and visual methods (`SetFacingIndicatorVisible`, etc). |
 | `Scripts/Modding/MonsterModLoader.cs` | File/JSON parsing and definition validation; loaded definitions join the built-in spawn list. |
 
 Terrain queries are already unified: Main injects its DungeonMap-backed IsWallAt delegate into Enemy.Configure. Do not reintroduce scene-wall scanning.
 
-Digging, door visual removal, changed-cell rendering, and keyboard weapon selection are implemented. Player and Enemy both keep GridPosition/health in an `ActorState`; combat and occupancy (`ICombatant.GridPosition`, `AttackResolver`, Main's `IsWallAt`/`OpenDoorAt`/enemy-occupancy sets/spawn-cell selection) all work in `GridPosition` now, not pixel `Vector2` - only node `Position` (rendering/camera) stays pixel-based, synced from each actor's `ActorState`. The remaining core problem is turn/behavior state (facing, attack preparation, monster definition, instance identity) still living only in nodes, not missing map infrastructure.
+Digging, door visual removal, changed-cell rendering, and keyboard weapon selection are implemented. Player and Enemy both keep GridPosition, health, facing and (for Enemy) the chaser's prepared-move flag in an `ActorState`; combat and occupancy (`ICombatant.GridPosition`, `AttackResolver`, Main's `IsWallAt`/`OpenDoorAt`/enemy-occupancy sets/spawn-cell selection) all work in `GridPosition` now, not pixel `Vector2` - only node `Position`/indicator rotation (rendering/camera) stay pixel-based, synced from each actor's `ActorState`. The remaining core problem is turn state (attack preparation, monster definition, instance identity) still living only in nodes/AttackState, not missing map infrastructure.
 
 ## State authority and target responsibilities
 
@@ -30,7 +30,7 @@ The live source of truth will be ordinary in-memory C# objects. JSON is the stor
 | Component | Target responsibility |
 | --- | --- |
 | GameState | Map, actors, stable execution order, turn number, run status, and run configuration/seed references. |
-| ActorState | Unique instance ID, definition ID, integer position, health, facing, equipment, attack preparation and enemy behavior state. Player and Enemy both currently have a first slice (GridPosition, health only); instance IDs, facing, equipment and attack/behavior state are not migrated yet. |
+| ActorState | Unique instance ID, definition ID, integer position, health, facing, equipment, attack preparation and enemy behavior state. Player and Enemy both currently have GridPosition, health, facing and one behavior flag (HasPreparedMove); instance IDs, definition ID, equipment and AttackState's preparation fields are not migrated in yet (AttackState itself is already a separate, capturable, non-node object). |
 | TurnResolver | Validate commands and execute complete turns; return structured outcomes and changed actor/cell IDs. |
 | Existing movement behaviors | Retain behavior IDs/factories, migrate decisions to state and explicit outcomes. Remove Player/node/visual dependencies. Do not add a competing EnemyBrain registry. |
 | AttackResolver / DigResolver | Apply combat and digging rules against authoritative state. |
@@ -65,7 +65,7 @@ Actor health/alive state must determine turn eligibility and occupancy, independ
 
 Use GridPosition throughout simulation. Convert to pixels only in views. Preserve order explicitly; JSON object iteration or node order must not determine enemy execution.
 
-ChasePlayerBehavior currently stores `_hasPreparedMove` privately, while facing lives on Enemy. Move both into capturable actor behavior state. Saving only coordinates would make a chaser prepare again after load. AttackState's preparing flag, remaining turns and locked direction also matter even when currently equipped attacks have zero preparation.
+Done: facing and the chaser's prepared-move flag now live on ActorState (`Facing`, `HasPreparedMove`) instead of a private Enemy field and a private ChasePlayerBehavior field; `IEnemyMovementHost` exposes both so ChasePlayerBehavior itself is stateless. Saving GridPosition/health alone would still make a chaser prepare again after load - that gap is closed now. AttackState's preparing flag, remaining turns and locked direction still live only on the separate AttackState object (already non-node, but not yet referenced from ActorState) and matter even when currently equipped attacks have zero preparation.
 
 ## Terrain and rendering
 
@@ -99,13 +99,13 @@ The map seed currently reproduces generation only. Main's random spawn positions
 
 ## Migration order
 
-Completed: shared map blocking, digging/tool separation, cell refresh, door opening graphics, keyboard weapon menu, monster definitions and reusable behaviors, Player's and Enemy's GridPosition/health extracted into ActorState, `ICombatant`/`AttackResolver`/Main's occupancy and wall queries converted from pixel `Vector2` to `GridPosition`.
+Completed: shared map blocking, digging/tool separation, cell refresh, door opening graphics, keyboard weapon menu, monster definitions and reusable behaviors, Player's and Enemy's GridPosition/health extracted into ActorState, `ICombatant`/`AttackResolver`/Main's occupancy and wall queries converted from pixel `Vector2` to `GridPosition`, facing and the chaser's prepared-move flag moved into ActorState.
 
-Next: add instance IDs, facing, equipment and attack/behavior state to ActorState (starting with `ChasePlayerBehavior._hasPreparedMove` and Enemy's `_facingDirection`, both currently private node/behavior state); introduce GameState; extract complete turns using the existing behavior registry; capture snapshots and 10-turn history; implement versioned run save/resume. Keep gameplay rules unchanged throughout. See [Next steps](NEXT_STEPS.md).
+Next: add instance IDs, definition ID and equipment references to ActorState, and reference AttackState from it; introduce GameState; extract complete turns using the existing behavior registry; capture snapshots and 10-turn history; implement versioned run save/resume. Keep gameplay rules unchanged throughout. See [Next steps](NEXT_STEPS.md).
 
 ## Verification and deferred work
 
-There are 35 test methods: generator/terrain 8, weapon 6, digging 3, dynamic terrain 4, mod loader 8, ActorState 6. Source inspection only in this documentation review; no test execution claim.
+There are 38 test methods: generator/terrain 8, weapon 6, digging 3, dynamic terrain 4, mod loader 8, ActorState 9. Source inspection only in this documentation review; no test execution claim.
 
 Highest-value additions: full turns/death/order, chaser intent, grid/visual independence, snapshot copy isolation, history rollover, save/load next-turn equivalence, terrain restoration, mod compatibility and failed-save backup recovery. Use small Godot checks for focus, door art and loading views.
 
