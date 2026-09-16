@@ -157,6 +157,7 @@ public sealed class TurnResolverTests
 
 	private sealed class FakePlayerActor : IPlayerTurnActor
 	{
+		public System.Guid InstanceId { get; } = System.Guid.NewGuid();
 		public GridPosition GridPosition { get; private set; }
 		public CombatFaction Faction => CombatFaction.Player;
 		public int Health { get; private set; } = 3;
@@ -188,6 +189,7 @@ public sealed class TurnResolverTests
 
 	private sealed class FakeCombatant : ICombatant
 	{
+		public System.Guid InstanceId { get; } = System.Guid.NewGuid();
 		public GridPosition GridPosition { get; }
 		public CombatFaction Faction { get; }
 		public int Health { get; private set; } = 3;

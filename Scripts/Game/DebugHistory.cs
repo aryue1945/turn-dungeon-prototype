@@ -1,6 +1,7 @@
 using Godot;
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 // One consumed gameplay turn: what was asked for, what the player and each
 // active enemy actually did, and the independent snapshot of everything
@@ -70,5 +71,30 @@ public sealed class DebugHistory
 	{
 		BoundarySnapshot = initialSnapshot ?? throw new ArgumentNullException(nameof(initialSnapshot));
 		_transitions.Clear();
+	}
+
+	// The state immediately before the last transitionCount transitions -
+	// e.g. exporting turns 7..11 (transitionCount 5) returns state 6. Clamped
+	// to what is actually retained: asking for at least as many transitions
+	// as exist just returns BoundarySnapshot, the same "state right before
+	// the oldest retained transition" it always means.
+	public GameSnapshot GetSnapshotBefore(int transitionCount)
+	{
+		int total = _transitions.Count;
+
+		if (transitionCount >= total)
+			return BoundarySnapshot;
+
+		return _transitions[total - transitionCount - 1].ResultingSnapshot;
+	}
+
+	// The last transitionCount transitions, oldest first, clamped to what is
+	// actually retained.
+	public IReadOnlyList<TurnTransition> GetLastTransitions(int transitionCount)
+	{
+		int total = _transitions.Count;
+		int take = Math.Clamp(transitionCount, 0, total);
+
+		return _transitions.Skip(total - take).ToList();
 	}
 }

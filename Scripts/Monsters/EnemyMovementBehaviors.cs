@@ -21,27 +21,34 @@ public sealed class EnemyActionResult
 {
 	public EnemyActionKind Kind { get; }
 	public string AttackName { get; }
+	public AttackExecutionDetail AttackDetail { get; }
 
-	private EnemyActionResult(EnemyActionKind kind, string attackName)
+	private EnemyActionResult(
+		EnemyActionKind kind,
+		string attackName,
+		AttackExecutionDetail attackDetail)
 	{
 		Kind = kind;
 		AttackName = attackName;
+		AttackDetail = attackDetail;
 	}
 
 	public static readonly EnemyActionResult Idle =
-		new(EnemyActionKind.Idle, null);
+		new(EnemyActionKind.Idle, null, null);
 	public static readonly EnemyActionResult Prepared =
-		new(EnemyActionKind.Prepared, null);
+		new(EnemyActionKind.Prepared, null, null);
 	public static readonly EnemyActionResult Moved =
-		new(EnemyActionKind.Moved, null);
+		new(EnemyActionKind.Moved, null, null);
 	public static readonly EnemyActionResult Blocked =
-		new(EnemyActionKind.Blocked, null);
+		new(EnemyActionKind.Blocked, null, null);
 
-	public static EnemyActionResult Attacked(string attackName) =>
-		new(EnemyActionKind.Attacked, attackName);
+	public static EnemyActionResult Attacked(
+		string attackName,
+		AttackExecutionDetail attackDetail) =>
+		new(EnemyActionKind.Attacked, attackName, attackDetail);
 
 	public static EnemyActionResult Preparing(string attackName) =>
-		new(EnemyActionKind.Preparing, attackName);
+		new(EnemyActionKind.Preparing, attackName, null);
 
 	public bool IsAttackAction =>
 		Kind == EnemyActionKind.Attacked || Kind == EnemyActionKind.Preparing;

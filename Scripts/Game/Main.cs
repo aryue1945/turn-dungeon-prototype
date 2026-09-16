@@ -28,8 +28,11 @@ public partial class Main : Node2D
 	private Button _restartButton;
 	private Control _endGameOverlay;
 	private Control _weaponSelectionPanel;
+	private Control _exportMenuOverlay;
+	private Button _exportLast5Button;
 	private bool _gameStarted;
 	private bool _gameEnded;
+	private bool _wasPlayerInputEnabledBeforeExportMenu;
 
 	private PackedScene _enemyScene;
 	private PackedScene _wallScene;
@@ -46,6 +49,7 @@ public partial class Main : Node2D
 	private DungeonRenderer _dungeonRenderer;
 	private GameState _gameState;
 	private DebugHistory _debugHistory;
+	private Guid _runId;
 	private int _dungeonSeed;
 	private int _currentPlayerZoneId = -1;
 	private Camera2D _camera;
@@ -84,6 +88,7 @@ public partial class Main : Node2D
 			"res://Art/Tiles/prison_cell_door.png"
 		);
 
+		_runId = Guid.NewGuid();
 		_random.Randomize();
 		_spawnPool = BuildSpawnPool();
 
@@ -154,6 +159,9 @@ public partial class Main : Node2D
 				break;
 			case Key.Key0:
 				SetCameraZoom(1.0f);
+				break;
+			case Key.X:
+				OpenExportMenu();
 				break;
 			default:
 				return;
@@ -448,7 +456,15 @@ public partial class Main : Node2D
 		_exportHistoryButton.Pressed += OnExportDebugHistoryPressed;
 		hud.AddChild(_exportHistoryButton);
 
-		CenterContainer endGameCenter = new();
+		CenterContainer endGameCenter = new()
+		{
+			// This spans the full screen (to center its panel when the
+			// game ends) and sits above the HUD in the same CanvasLayer.
+			// Without this, it silently blocks clicks on anything under it
+			// - harmless while the HUD only had labels, but it ate clicks
+			// on the export button below once one existed.
+			MouseFilter = Control.MouseFilterEnum.Ignore
+		};
 		uiRoot.AddChild(endGameCenter);
 		endGameCenter.SetAnchorsAndOffsetsPreset(
 			Control.LayoutPreset.FullRect
@@ -488,6 +504,88 @@ public partial class Main : Node2D
 		};
 		_restartButton.Pressed += OnRestartPressed;
 		endGameBox.AddChild(_restartButton);
+
+		CreateExportMenu();
+	}
+
+	// The "X" key and the Export button both open this same modal menu.
+	// Hidden by default; a full-rect backdrop above the HUD blocks clicks to
+	// the game underneath while it is open (opening/using it must not
+	// consume a turn, change game state, or use RNG - it only reads the
+	// already-captured DebugHistory).
+	private void CreateExportMenu()
+	{
+		CanvasLayer exportMenuLayer = new()
+		{
+			Layer = 10
+		};
+		AddChild(exportMenuLayer);
+
+		Control menuRoot = CreateFullRectRoot(exportMenuLayer);
+		menuRoot.Visible = false;
+		_exportMenuOverlay = menuRoot;
+
+		ColorRect backdrop = new()
+		{
+			Color = new Color(0, 0, 0, 0.55f)
+		};
+		menuRoot.AddChild(backdrop);
+		backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		CenterContainer menuCenter = new();
+		menuRoot.AddChild(menuCenter);
+		menuCenter.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		PanelContainer menuPanel = new()
+		{
+			CustomMinimumSize = new Vector2(260, 220)
+		};
+		menuCenter.AddChild(menuPanel);
+
+		MarginContainer menuMargin = new();
+		menuMargin.AddThemeConstantOverride("margin_left", 20);
+		menuMargin.AddThemeConstantOverride("margin_top", 16);
+		menuMargin.AddThemeConstantOverride("margin_right", 20);
+		menuMargin.AddThemeConstantOverride("margin_bottom", 16);
+		menuPanel.AddChild(menuMargin);
+
+		VBoxContainer menuBox = new();
+		menuBox.AddThemeConstantOverride("separation", 10);
+		menuMargin.AddChild(menuBox);
+
+		Label titleLabel = new()
+		{
+			CustomMinimumSize = new Vector2(208, 28),
+			Text = "Export Debug History",
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		menuBox.AddChild(titleLabel);
+
+		Button last3Button = CreateExportMenuButton("Last 3 turns");
+		last3Button.Pressed += () => OnExportOptionSelected(3);
+		menuBox.AddChild(last3Button);
+
+		Button last5Button = CreateExportMenuButton("Last 5 turns (default)");
+		last5Button.Pressed += () => OnExportOptionSelected(5);
+		menuBox.AddChild(last5Button);
+		_exportLast5Button = last5Button;
+
+		Button last10Button = CreateExportMenuButton("Last 10 turns");
+		last10Button.Pressed += () => OnExportOptionSelected(10);
+		menuBox.AddChild(last10Button);
+
+		Button cancelButton = CreateExportMenuButton("Cancel");
+		cancelButton.Pressed += CloseExportMenu;
+		menuBox.AddChild(cancelButton);
+	}
+
+	private static Button CreateExportMenuButton(string text)
+	{
+		return new Button
+		{
+			CustomMinimumSize = new Vector2(208, 36),
+			Text = text
+		};
 	}
 
 	private void CreateWeaponSelection()
@@ -604,8 +702,8 @@ public partial class Main : Node2D
 				GD.Print($"Player destroyed terrain at {outcome.TargetCell}.");
 				_dungeonRenderer.RefreshCell(
 					_dungeonMap,
-					outcome.TargetCell.X,
-					outcome.TargetCell.Y
+					outcome.TargetCell.Value.X,
+					outcome.TargetCell.Value.Y
 				);
 				break;
 
@@ -623,8 +721,8 @@ public partial class Main : Node2D
 				{
 					_dungeonRenderer.RefreshCell(
 						_dungeonMap,
-						outcome.TargetCell.X,
-						outcome.TargetCell.Y
+						outcome.TargetCell.Value.X,
+						outcome.TargetCell.Value.Y
 					);
 				}
 				break;
@@ -857,10 +955,15 @@ public partial class Main : Node2D
 		GetTree().ReloadCurrentScene();
 	}
 
-	// Reads the already-captured DebugHistory and writes it out - no turn,
-	// state or RNG involved, matching the export rule in
-	// docs/SAVE_AND_DEBUG_HISTORY.md.
+	// The Export button and the "X" key both open this same menu - neither
+	// consumes a turn, changes game state, or uses RNG (see
+	// docs/SAVE_AND_DEBUG_HISTORY.md); opening it only toggles UI visibility.
 	private void OnExportDebugHistoryPressed()
+	{
+		OpenExportMenu();
+	}
+
+	private void OpenExportMenu()
 	{
 		if (_debugHistory == null)
 		{
@@ -868,13 +971,81 @@ public partial class Main : Node2D
 			return;
 		}
 
-		string json = DebugHistoryExporter.ToJson(_debugHistory);
+		if (_exportMenuOverlay.Visible)
+			return;
+
+		_wasPlayerInputEnabledBeforeExportMenu = _gameStarted && !_gameEnded;
+
+		if (_wasPlayerInputEnabledBeforeExportMenu)
+			_player.SetProcessUnhandledInput(false);
+
+		_exportMenuOverlay.Visible = true;
+		_exportLast5Button.GrabFocus();
+	}
+
+	private void CloseExportMenu()
+	{
+		_exportMenuOverlay.Visible = false;
+
+		if (_wasPlayerInputEnabledBeforeExportMenu)
+			_player.SetProcessUnhandledInput(true);
+	}
+
+	private void OnExportOptionSelected(int transitionCount)
+	{
+		CloseExportMenu();
+		ExportDebugHistory(transitionCount);
+	}
+
+	// Reads the already-captured DebugHistory and writes it out - no turn,
+	// state or RNG involved, matching the export rule in
+	// docs/SAVE_AND_DEBUG_HISTORY.md.
+	private void ExportDebugHistory(int transitionCount)
+	{
+		if (_debugHistory == null)
+		{
+			GD.Print("No debug history to export yet.");
+			return;
+		}
+
+		DebugHistoryExportContext context = new(
+			_runId,
+			_dungeonSeed,
+			floorId: null,
+			buildVersion: System.Reflection.Assembly
+				.GetExecutingAssembly()
+				.GetName()
+				.Version?
+				.ToString(),
+			weapons: BuildWeaponSummaries(),
+			monsters: BuildMonsterSummaries()
+		);
+
+		string json = DebugHistoryExporter.ToJson(_debugHistory, transitionCount, context);
 		string path = System.IO.Path.Combine(
 			OS.GetUserDataDir(),
 			"debug_history_export.json"
 		);
 		System.IO.File.WriteAllText(path, json);
 
-		GD.Print($"Exported debug history to {path}");
+		GD.Print($"Exported last {transitionCount} turn(s) of debug history to {path}");
+	}
+
+	// The known weapon roster (no weapon-mod loader exists yet, unlike
+	// monsters) and the actual spawn pool for this run (built-in plus any
+	// loaded monster mods), so custom content shows up in the export exactly
+	// as it behaves in this run.
+	private static List<WeaponSummary> BuildWeaponSummaries()
+	{
+		return new List<WeaponSummary>
+		{
+			WeaponSummary.From(WeaponDefinitions.BasicSword),
+			WeaponSummary.From(WeaponDefinitions.LongSword)
+		};
+	}
+
+	private List<MonsterSummary> BuildMonsterSummaries()
+	{
+		return _spawnPool.Select(MonsterSummary.From).ToList();
 	}
 }

@@ -81,7 +81,7 @@ public sealed class EnemyMovementBehaviorTests
 	public void TurningWalkerBehavior_AttackConsumesTheWholeBeatWithNoTurn()
 	{
 		FakeMovementHost host = new(new GridPosition(0, 0));
-		host.NextMoveResult = EnemyActionResult.Attacked("Bite");
+		host.NextMoveResult = EnemyActionResult.Attacked("Bite", null);
 
 		EnemyActionResult result = new TurningWalkerBehavior(turnRight: false).TakeTurn(
 			host, null, new HashSet<GridPosition>(), new List<ICombatant>());
@@ -108,9 +108,11 @@ public sealed class EnemyMovementBehaviorTests
 
 	private sealed class FakeCombatant : ICombatant
 	{
+		public System.Guid InstanceId { get; } = System.Guid.NewGuid();
 		public GridPosition GridPosition { get; }
 		public CombatFaction Faction => CombatFaction.Player;
 		public bool IsAlive => true;
+		public int Health => 1;
 
 		public FakeCombatant(GridPosition gridPosition)
 		{
