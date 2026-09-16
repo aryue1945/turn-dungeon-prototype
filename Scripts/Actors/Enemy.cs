@@ -9,7 +9,6 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	private ActorState _state;
 	private Polygon2D _facingIndicator;
 	private Label _healthLabel;
-	private Vector2 _facingDirection = Vector2.Down;
 	private IEnemyMovementBehavior _movementBehavior;
 	private Func<GridPosition, bool> _isWallAt;
 
@@ -20,7 +19,8 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	public AttackState Attack { get; private set; }
 
 	public GridPosition GridPosition => _state.GridPosition;
-	Vector2 IEnemyMovementHost.FacingDirection => _facingDirection;
+	Vector2 IEnemyMovementHost.FacingDirection => _state.Facing;
+	bool IEnemyMovementHost.HasPreparedMove => _state.HasPreparedMove;
 
 	// Must be called before this node enters the tree (Main configures the
 	// enemy immediately after instantiating it, before AddChild triggers
@@ -40,7 +40,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		_state = new ActorState(gridPosition, definition.Health);
 		Position = pixelPosition;
 		Attack = new AttackState(definition.PrimaryAttack);
-		_facingDirection = _movementBehavior.InitialFacingDirection;
+		_state.SetFacing(_movementBehavior.InitialFacingDirection);
 		_isWallAt = isWallAt;
 	}
 
@@ -94,13 +94,18 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 
 	void IEnemyMovementHost.SetFacingDirection(Vector2 direction)
 	{
-		_facingDirection = direction;
+		_state.SetFacing(direction);
 		UpdateFacingIndicatorRotation();
 	}
 
 	void IEnemyMovementHost.SetFacingIndicatorVisible(bool visible)
 	{
 		_facingIndicator.Visible = visible;
+	}
+
+	void IEnemyMovementHost.SetHasPreparedMove(bool hasPreparedMove)
+	{
+		_state.SetHasPreparedMove(hasPreparedMove);
 	}
 
 	void IEnemyMovementHost.TurnLeft() => TurnLeft();
@@ -115,19 +120,15 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 
 	private void TurnLeft()
 	{
-		_facingDirection = new Vector2(
-			_facingDirection.Y,
-			-_facingDirection.X
-		);
+		Vector2 facing = _state.Facing;
+		_state.SetFacing(new Vector2(facing.Y, -facing.X));
 		UpdateFacingIndicatorRotation();
 	}
 
 	private void TurnRight()
 	{
-		_facingDirection = new Vector2(
-			-_facingDirection.Y,
-			_facingDirection.X
-		);
+		Vector2 facing = _state.Facing;
+		_state.SetFacing(new Vector2(-facing.Y, facing.X));
 		UpdateFacingIndicatorRotation();
 	}
 
@@ -135,10 +136,12 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
+		Vector2 facing = _state.Facing;
+
 		AttackTurnResult attackResult =
 			AttackResolver.TryAttack(
 				this,
-				_facingDirection,
+				facing,
 				Attack,
 				combatants,
 				_isWallAt
@@ -157,8 +160,8 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		}
 
 		GridPosition nextGridPosition = new(
-			_state.GridPosition.X + (int)_facingDirection.X,
-			_state.GridPosition.Y + (int)_facingDirection.Y
+			_state.GridPosition.X + (int)facing.X,
+			_state.GridPosition.Y + (int)facing.Y
 		);
 
 		if (_isWallAt(nextGridPosition) ||
@@ -167,7 +170,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 			return EnemyMoveResult.Blocked;
 		}
 
-		Position += _facingDirection * TileSize;
+		Position += facing * TileSize;
 		_state.MoveTo(nextGridPosition);
 		return EnemyMoveResult.Moved;
 	}
@@ -218,6 +221,6 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 
 	private void UpdateFacingIndicatorRotation()
 	{
-		_facingIndicator.Rotation = _facingDirection.Angle();
+		_facingIndicator.Rotation = _state.Facing.Angle();
 	}
 }

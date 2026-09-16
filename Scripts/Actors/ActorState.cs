@@ -1,20 +1,26 @@
+using Godot;
 using System;
 
 // The authoritative, engine-independent half of an actor: where it is on
-// the grid and how much health it has left. Godot nodes (Player, and later
-// Enemy) own one of these and treat it as the source of truth, deriving
-// their pixel Position from it rather than the other way around.
+// the grid, how much health it has left, which way it is facing, and
+// whether a movement behavior has a move locked in for next turn. Godot
+// nodes (Player, Enemy) own one of these and treat it as the source of
+// truth, deriving their pixel Position from it rather than the other way
+// around.
 //
-// This is the first slice of the ActorState/GameState migration described
-// in docs/ARCHITECTURE.md - GridPosition and health only for now. Facing,
-// equipment and attack/behavior state stay where they already live until
-// Enemy is migrated too.
+// This is the ActorState/GameState migration described in
+// docs/ARCHITECTURE.md - GridPosition, health, facing and the one bit of
+// enemy-behavior state (HasPreparedMove) that previously lived only on
+// ChasePlayerBehavior. Instance IDs, equipment and full per-behavior
+// state beyond that single flag are not covered yet.
 public sealed class ActorState
 {
 	public GridPosition GridPosition { get; private set; }
 	public int Health { get; private set; }
 	public int MaxHealth { get; }
 	public bool IsAlive => Health > 0;
+	public Vector2 Facing { get; private set; }
+	public bool HasPreparedMove { get; private set; }
 
 	public ActorState(GridPosition gridPosition, int maxHealth)
 	{
@@ -45,5 +51,15 @@ public sealed class ActorState
 			return;
 
 		Health = Math.Max(0, Health - damage);
+	}
+
+	public void SetFacing(Vector2 facing)
+	{
+		Facing = facing;
+	}
+
+	public void SetHasPreparedMove(bool hasPreparedMove)
+	{
+		HasPreparedMove = hasPreparedMove;
 	}
 }
