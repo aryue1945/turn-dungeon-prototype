@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using System;
+using System.Collections.Generic;
 using System.IO;
 
 [TestFixture]
@@ -130,6 +131,11 @@ public sealed class RunSaveFileServiceTests
 		ActorState player = new(new GridPosition(0, 0), maxHealth: 3, "core.player");
 		GameState state = new(map, player);
 
-		return RunSaveEnvelope.Capture(state);
+		return RunSaveEnvelope.Capture(
+			state,
+			WeaponDefinitions.BasicSword,
+			DiggingToolDefinitions.BasicShovel,
+			new List<MonsterDefinition>()
+		);
 	}
 }

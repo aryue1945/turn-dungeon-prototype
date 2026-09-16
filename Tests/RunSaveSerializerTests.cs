@@ -1,5 +1,6 @@
 using Godot;
 using NUnit.Framework;
+using System.Collections.Generic;
 
 [TestFixture]
 public sealed class RunSaveSerializerTests
@@ -18,7 +19,7 @@ public sealed class RunSaveSerializerTests
 		state.CompleteTurn();
 		state.SetStatus(RunStatus.Won);
 
-		RunSaveEnvelope envelope = RunSaveEnvelope.Capture(state);
+		RunSaveEnvelope envelope = CreateEnvelope(state);
 		string json = RunSaveSerializer.ToJson(envelope);
 		RunSaveLoadOutcome outcome = RunSaveSerializer.FromJson(json);
 
@@ -34,7 +35,7 @@ public sealed class RunSaveSerializerTests
 		DungeonMap map = Generate(seed: 1);
 		GameState state = new(map, CreatePlayerState());
 
-		string json = RunSaveSerializer.ToJson(RunSaveEnvelope.Capture(state));
+		string json = RunSaveSerializer.ToJson(CreateEnvelope(state));
 		RunSaveLoadOutcome outcome = RunSaveSerializer.FromJson(json);
 		GridSnapshot grid = outcome.Envelope.Snapshot.Grid;
 
@@ -69,7 +70,7 @@ public sealed class RunSaveSerializerTests
 
 		GameState state = new(Generate(seed: 1), player);
 
-		string json = RunSaveSerializer.ToJson(RunSaveEnvelope.Capture(state));
+		string json = RunSaveSerializer.ToJson(CreateEnvelope(state));
 		RunSaveLoadOutcome outcome = RunSaveSerializer.FromJson(json);
 		ActorSnapshot restoredPlayer = outcome.Envelope.Snapshot.Player;
 
@@ -89,11 +90,11 @@ public sealed class RunSaveSerializerTests
 		DungeonMap map = Generate(seed: 1);
 		GameState state = new(map, CreatePlayerState());
 
-		RunSaveEnvelope inProgress = RunSaveEnvelope.Capture(state);
+		RunSaveEnvelope inProgress = CreateEnvelope(state);
 		Assert.That(inProgress.IsComplete, Is.False);
 
 		state.SetStatus(RunStatus.Won);
-		RunSaveEnvelope won = RunSaveEnvelope.Capture(state);
+		RunSaveEnvelope won = CreateEnvelope(state);
 		Assert.That(won.IsComplete, Is.True);
 	}
 
@@ -102,11 +103,40 @@ public sealed class RunSaveSerializerTests
 	{
 		DungeonMap map = Generate(seed: 1);
 		GameState state = new(map, CreatePlayerState());
-		RunSaveEnvelope envelope = RunSaveEnvelope.Capture(state);
+		RunSaveEnvelope envelope = CreateEnvelope(state);
 
 		RunSaveLoadOutcome outcome = RunSaveSerializer.FromJson(RunSaveSerializer.ToJson(envelope));
 
 		Assert.That(outcome.Envelope.SavedAtUtc, Is.EqualTo(envelope.SavedAtUtc));
+	}
+
+	[Test]
+	public void Capture_ComputesAContentFingerprintFromTheGivenDefinitions()
+	{
+		DungeonMap map = Generate(seed: 1);
+		GameState state = new(map, CreatePlayerState());
+
+		RunSaveEnvelope withBasicSword = RunSaveEnvelope.Capture(
+			state, WeaponDefinitions.BasicSword, DiggingToolDefinitions.BasicShovel, new List<MonsterDefinition>()
+		);
+		RunSaveEnvelope withLongSword = RunSaveEnvelope.Capture(
+			state, WeaponDefinitions.LongSword, DiggingToolDefinitions.BasicShovel, new List<MonsterDefinition>()
+		);
+
+		Assert.That(withBasicSword.ContentFingerprint, Is.Not.Null.And.Not.Empty);
+		Assert.That(withLongSword.ContentFingerprint, Is.Not.EqualTo(withBasicSword.ContentFingerprint));
+	}
+
+	[Test]
+	public void RoundTrip_PreservesContentFingerprint()
+	{
+		DungeonMap map = Generate(seed: 1);
+		GameState state = new(map, CreatePlayerState());
+		RunSaveEnvelope envelope = CreateEnvelope(state);
+
+		RunSaveLoadOutcome outcome = RunSaveSerializer.FromJson(RunSaveSerializer.ToJson(envelope));
+
+		Assert.That(outcome.Envelope.ContentFingerprint, Is.EqualTo(envelope.ContentFingerprint));
 	}
 
 	[Test]
@@ -118,7 +148,8 @@ public sealed class RunSaveSerializerTests
 			schemaVersion: 999,
 			seed: 1,
 			snapshot: GameSnapshot.Capture(state),
-			savedAtUtc: System.DateTime.UtcNow
+			savedAtUtc: System.DateTime.UtcNow,
+			contentFingerprint: "irrelevant"
 		);
 
 		RunSaveLoadOutcome outcome = RunSaveSerializer.FromJson(RunSaveSerializer.ToJson(envelope));
@@ -154,5 +185,15 @@ public sealed class RunSaveSerializerTests
 	private static ActorState CreatePlayerState()
 	{
 		return new ActorState(new GridPosition(0, 0), maxHealth: 3, "core.player");
+	}
+
+	private static RunSaveEnvelope CreateEnvelope(GameState state)
+	{
+		return RunSaveEnvelope.Capture(
+			state,
+			WeaponDefinitions.BasicSword,
+			DiggingToolDefinitions.BasicShovel,
+			new List<MonsterDefinition>()
+		);
 	}
 }
