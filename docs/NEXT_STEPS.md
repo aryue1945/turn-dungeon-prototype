@@ -1,8 +1,8 @@
 # Next Steps
 
-Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (UTC). Implemented status is based on source inspection.
+Reviewed against main `c4a5d2e99236852b8374e8c733f0ac521deeff20` on 2026-09-16 (UTC). Implemented status is based on source inspection.
 
-This roadmap separates completed foundation work from planned changes. Save/resume and 10-turn diagnostics are agreed design direction, not implemented features.
+Milestones 1-5 (authoritative state, complete-turn execution, debug history, save/resume, reproducible encounters) are the completed architecture foundation. The active direction from here is gameplay content, not more infrastructure - see "Active roadmap" below. Deferred architecture work that no gameplay requirement currently needs lives in "Architecture backlog" at the end of this document; implement an item there only when a concrete requirement calls for it.
 
 ## Completed foundation
 
@@ -11,117 +11,89 @@ This roadmap separates completed foundation work from planned changes. Save/resu
 - Distinct breakable-wall brick texture and DungeonRenderer.RefreshCell.
 - Door IsOpen state and visual removal for player/enemy occupancy; doors remain walkable before opening.
 - Keyboard weapon selection with initial focus, arrow neighbors, confirm and 1/2 shortcuts.
-- Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods.
-- 125 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, GameState, TurnResolver, enemy movement behaviors, GameSnapshot, DebugHistory, its exporter, map restore, actor restore, run save serialization, the save-file service (backup rotation/recovery), and definition-registry lookups.
-- Milestone 1 (ActorState/GameState/grid combat) is done; milestone 2 (complete-turn execution) is substantially done; milestone 3 (snapshot capture/debug history) is substantially done; milestone 4 (save/resume) is substantially done - see below.
-
-Tree/growing walls remain disabled in generation and the turn loop. Do not re-enable them incidentally. Full turns and save/load have no implementation or tests yet; debug export does now.
+- Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods with duplicate-id rejection.
+- Save/resume: Continue/New Run startup flow, autosave, safe backup/recovery file I/O, save-content fingerprint validation, and a keyboard-navigable pause menu.
+- Deterministic encounter generation: seeded roster/placement, an explicit spawn budget, and stable content ordering independent of filesystem/dictionary enumeration.
+- 147 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading (including duplicate-id rejection), ActorState, GameState, TurnResolver, enemy movement behaviors, GameSnapshot, DebugHistory, its exporter, map restore, actor restore, run save serialization, the save-file service, definition-registry lookups, encounter planning, and content fingerprinting.
+- Milestones 1-5 are done - see below. Tree/growing walls remain disabled in generation and the turn loop; do not re-enable them incidentally.
 
 ## 1. Authoritative actor state and grid combat (done)
 
 Add ActorState and GameState with instance IDs, GridPosition, health, facing, equipment and attack/behavior state. Convert combat and occupancy to cells. Preserve existing monster IDs and behavior factories; add stable weapon/tool IDs.
 
-`Scripts/Actors/ActorState.cs` (unique `InstanceId` (Guid), required `DefinitionId`, GridPosition, health, facing, HasPreparedMove, WeaponId/ToolId, Attack reference; engine-independent, unit tested). Player and Enemy both own one as their authoritative source; `PlaceAt`/`Move`/`SetFacingDirection` (Player) and `Configure`/`TryMoveForward`/`IEnemyMovementHost` (Enemy) keep pixel Position and facing indicator rotation in sync from it. `ICombatant.GridPosition` replaced pixel `Position`; `AttackResolver`'s offset math and Main's `IsWallAt`/`OpenDoorAt`/enemy-occupancy sets/spawn-cell selection all work in `GridPosition` now. `ChasePlayerBehavior._hasPreparedMove` and Enemy's `_facingDirection` are gone, both read/write ActorState through `IEnemyMovementHost`. `WeaponDefinition`/`DiggingToolDefinition` (`IEquipment`) carry a stable `Id` (`core.basic_sword`, `core.long_sword`, `core.basic_shovel`), mirrored into `ActorState.WeaponId`/`ToolId` by Player's `EquipWeapon`/`EquipDiggingTool`. `ActorState.Attack` holds the same `AttackState` instance Player/Enemy already mutate (set once in `_Ready`/`Configure`), not a copy. `Scripts/Game/GameState.cs` exists (Map, Player/Enemies as ActorState references, TurnNumber, Status) and Main keeps it in sync via `AddEnemy`/`RemoveDefeatedEnemies`/`CompleteTurn`/`SetStatus`.
+`Scripts/Actors/ActorState.cs` (unique `InstanceId` (Guid), required `DefinitionId`, GridPosition, health, facing, HasPreparedMove, WeaponId/ToolId, Attack reference; engine-independent, unit tested). Player and Enemy both own one as their authoritative source. `ICombatant.GridPosition` replaced pixel `Position`; `AttackResolver`'s offset math and Main's `IsWallAt`/enemy-occupancy sets/spawn-cell selection all work in `GridPosition`. `WeaponDefinition`/`DiggingToolDefinition` (`IEquipment`) carry a stable `Id`, mirrored into `ActorState.WeaponId`/`ToolId`. `Scripts/Game/GameState.cs` exists (Map, Player/Enemies as ActorState references, TurnNumber, Status) and Main keeps it in sync via `AddEnemy`/`RemoveDefeatedEnemies`/`CompleteTurn`/`SetStatus`/`RestoreTurnNumber`.
 
-GameState is not yet a dependency of any rule - Main still decides everything from its own fields and reads/writes GameState only as a mirror. That's milestone 2's job.
+Acceptance met: rules no longer read node positions; views derive positions from state; definitions remain separate from runtime data; a slow chaser's prepared move is captured explicitly.
 
-Acceptance: rules no longer read node positions; views derive positions from state; definitions remain separate from runtime data; a slow chaser's prepared move can be captured explicitly.
+## 2. Complete-turn execution (done)
 
-Risks (addressed): coordinate rotation, duplicate actor occupancy, lost private AI state, shared definition mutation.
+`Scripts/Game/TurnResolver.cs` - `ResolvePlayerAction` resolves the player's half of a turn (attack -> dig -> move/bump) and returns a typed `PlayerActionOutcome`, performing every gameplay mutation itself; tested via `IPlayerTurnActor` and a hand-built `DungeonMap`. `ResolveEnemyAction` wraps one enemy's turn plus door-opening, returning `EnemyActionOutcome` (now also carrying `ActorInstanceId` and, for attacks, an `AttackExecutionDetail`).
 
-## 2. Complete-turn execution (substantially done)
+`IEnemyMovementBehavior.TakeTurn` returns `EnemyActionResult` instead of `void`; all four behaviors are unit tested against fakes with no Godot node needed. `GameState.IsPlayerDefeated`/`AreAllEnemiesDefeated` are read by `Main.CheckForVictory`/`TakeEnemyTurns` instead of raw actor-list/health fields.
 
-Extract TurnResolver and adapt existing movement behaviors to state-based decisions/outcomes. Keep attack -> dig -> move/bump priority, sequential enemy order, door-on-occupancy behavior, and early victory/death semantics.
+Remaining, deliberately not pursued further: the enemy-phase loop itself stays in `Main.TakeEnemyTurns` rather than moving into TurnResolver behind a pile of delegates - relocating it would not reduce complexity. `ResolveEnemyAction` still takes concrete `Enemy`/`Player` and needs a real node to test itself.
 
-Done: `Scripts/Game/TurnResolver.cs` - `ResolvePlayerAction` resolves the player's half of a turn (attack -> dig -> move/bump) and returns a typed `PlayerActionOutcome` (Attacked/Preparing/TerrainDug/TerrainDestroyed/Moved/Blocked). It performs every gameplay mutation itself (damage via AttackResolver, terrain via DigResolver, movement, door-opening); `Main.ApplyPlayerActionOutcome` only narrates and refreshes changed cells. Tested via a small `IPlayerTurnActor` interface (Player already satisfies it - no Godot node needed in tests) and a hand-built `DungeonMap`, not the generator. `ResolveEnemyAction` wraps one enemy's turn (`Enemy.TakeTurn`) plus door-opening, returning `EnemyActionOutcome`; Main's old `OpenDoorAt` helper is gone, replaced by both resolver methods calling `DungeonMap.OpenDoor` directly.
+Acceptance met: plain NUnit tests cover complete turns, dead enemies never act, later enemies stop after player death, and each consumed command has exactly one completion boundary even on terminal turns.
 
-`IEnemyMovementBehavior.TakeTurn` now returns `EnemyActionResult` (Idle/Prepared/Moved/Attacked/Preparing/Blocked, with an attack name where relevant) instead of `void` - `Enemy.TryMoveForward` returns the same type and no longer prints directly (Main narrates via `ApplyEnemyActionOutcome`, matching the player side). The `player` parameter narrowed from the concrete `Player` class to `ICombatant` (only `GridPosition` was ever used), so all four behaviors are now unit tested (`Tests/EnemyMovementBehaviorTests.cs`) against a fake host and fake player - no Godot node needed, mirroring `IPlayerTurnActor`.
+## 3. Snapshot capture and turn-history export (done)
 
-`GameState` gained `IsPlayerDefeated`/`AreAllEnemiesDefeated`, and `Main.CheckForVictory`/`TakeEnemyTurns` read those instead of `_enemies.Count`/`_player.Health` directly - both were already kept live in sync, so this is the first rule that actually depends on GameState rather than mirroring into it.
+`Scripts/Game/GameSnapshot.cs` - `GameSnapshot.Capture(GameState)` deep-copies the map and every actor into independent, serializable objects, including `CellSnapshot.ActorInstanceIds` derived at capture time from the authoritative Player/Enemies lists (never a second source of truth). `Scripts/Game/DebugHistory.cs` keeps the latest 10 transitions plus `BoundarySnapshot`; `GetSnapshotBefore`/`GetLastTransitions` select a menu-sized slice (N transitions plus the one snapshot immediately before them).
 
-Deliberately deferred, judged not worth closing before moving to milestone 3: the enemy-phase loop (iterate enemies, stop on player death) stays in `Main.TakeEnemyTurns` - moving it into TurnResolver would mean passing it a pile of delegates for Main's enemy-liveness/occupancy/combatant-list logic, relocating complexity rather than reducing it. `ResolveEnemyAction` still takes concrete `Enemy`/`Player` and needs a real node to test itself (only the behavior decision inside it is decoupled). The top-of-method gameplay-input guard and the completion-boundary concept (see Turn contract step 7 in ARCHITECTURE.md) are still Main's own code, not a formal TurnResolver step.
+The Export button and the "X" key both open a Last 3/5/10-turn export menu (`Main.CreateExportMenu`); opening/using it only toggles UI visibility and reads the already-captured `DebugHistory`, never consuming a turn, mutating `GameState`, or drawing RNG. `DebugHistoryExporter.ToJson(DebugHistory, int, DebugHistoryExportContext)` serializes the selected slice as a `DebugHistoryExport`: schema version, a per-session `RunId`, the dungeon seed, a `FloorId` left `null` (no floor concept yet), a best-effort `BuildVersion`, a `ContentFingerprint` (shared `ContentFingerprinter`, see milestone 5), and compact weapon/monster summaries. Attacks are recorded with attacker id, every cell the pattern swept, and per-target damage/remaining-health/defeated - not a default `(0,0)` target cell.
 
-Acceptance: plain NUnit tests cover complete turns, dead enemies never act, later enemies stop after player death, and each consumed command has exactly one completion boundary even on terminal turns.
+Remaining, deliberately deferred: no run/floor concept beyond the generated `RunId`/`null` `FloorId` (floors do not exist yet - see roadmap item 4); Main's own wiring (menu open/close, export handlers) has no automated test since Main is a Godot node.
 
-Risks: extra enemy phases, chaser timing changes, turning after attacks, node-deletion timing leaking into rules. Keep dynamic terrain disabled.
+Acceptance met: advancing the live game does not alter past snapshots; at turn 25 the retained states are 15..25; terminal turns are retained; exported JSON explains a blocked/prepared actor with real attack detail; export consumes no turn/RNG.
 
-## 3. Snapshot capture and 10-turn debug history (substantially done)
+## 4. Current-run save/resume (done)
 
-Implement independent full snapshots and a bounded history using [the snapshot contract](SAVE_AND_DEBUG_HISTORY.md). Store 10 transitions plus their initial state, with 2D cells, actor details, commands and structured outcomes. Add Export Debug History during play and on the end screen.
+`Scripts/Game/GameSnapshotRestore.cs` rebuilds a `DungeonMap` (`RestoreMap`) and an `ActorState`/`AttackState` (`RestoreActor`) from saved data instead of fresh generation/setup. `RunSaveEnvelope`/`RunSaveSerializer` round-trip a versioned save through JSON (`SchemaVersion`, `Seed`, `SavedAtUtc`, a derived `IsComplete`, and - since milestone 5 - `ContentFingerprint`), rejecting an unsupported version or unparsable file with a typed `RunSaveLoadOutcome`. `RunSaveFileService` implements the one current-run save slot plus a recovery backup: `Save` writes and validates a temp file before touching anything already on disk, rotates the existing current save into backup, then atomically replaces current; `Load` falls back to the backup only if it independently validates, never deleting or modifying either file.
 
-`Scripts/Game/GameSnapshot.cs` - `GameSnapshot.Capture(GameState)` deep-copies the map (`GridSnapshot`/`CellSnapshot`: terrain, durability, IsOpen, zone/connection ids) and every actor (`ActorSnapshot`: instance/definition id, position, health, facing, prepared-move flag, weapon/tool ids, attack-preparation state) into independent, serializable objects. Unit tested that later mutating the live `DungeonMap`/`ActorState` cannot change an already-captured snapshot (`Tests/GameSnapshotTests.cs`). `Scripts/Game/DebugHistory.cs` - `TurnTransition` bundles one turn's direction, `PlayerActionOutcome`, `EnemyActionOutcome` list and resulting `GameSnapshot`; `DebugHistory` keeps the latest 10 transitions plus `BoundarySnapshot` (the evicted transition's own resulting snapshot doubles as "the state right before the new oldest retained transition"). Unit tested against the spec's own turn-25-retains-states-15..25 example (`Tests/DebugHistoryTests.cs`). Wired into `Main.cs`: `SelectWeapon` constructs the initial `DebugHistory` (matching "after setup/weapon choice, before the first command"); `OnPlayerMoveRequested` appends a transition at both completion boundaries (normal and early-victory/death), after `CompleteTurn()` so the transition's turn number matches its own resulting snapshot; `TakeEnemyTurns` now returns the `List<EnemyActionOutcome>` a transition carries. `Scripts/Game/DebugHistoryExporter.cs` - `ToJson` serializes a `DebugHistory` with `System.Text.Json` (indented, camelCase, string enums), unit tested against the parsed JSON structure (`Tests/DebugHistoryExporterTests.cs`). A HUD button (visible during play and on the end screen, since the HUD panel is never hidden) calls `Main.OnExportDebugHistoryPressed`, which writes the JSON under `OS.GetUserDataDir()`.
+`Main.cs`'s boot flow goes `_Ready` -> `RunSaveFileService.Load` -> `ShowStartupMenu`: no resumable save (none exists, or the existing one is already complete) goes straight to New Run; an unfinished one shows Continue/New Run. `OnContinuePressed` resolves the saved WeaponId/ToolId/each enemy's DefinitionId back into real definitions via `TryResolveSaveDefinitions` (checking the run's actual spawn pool, so mods are covered) and compares the current content fingerprint against the saved one - a missing or changed definition disables Continue with a useful error and leaves the save/backup files untouched. `RestoreRun` rebuilds the map, player (`Player.RestoreFrom`) and each enemy (`Enemy.RestoreFrom`) from the snapshot, skipping weapon selection; a save whose status is already Won/Lost goes straight to the end screen. `StartNewRun` confirms first only when the existing save is valid and unfinished. Autosave fires from exactly two call sites - `SelectWeapon` (initial setup) and a shared `FinishTurn` helper both `OnPlayerMoveRequested` branches funnel through - so a turn ending in victory/death produces exactly one save. A keyboard-navigable pause menu (ESC: Restart/Quit/Resume) and Quit buttons round out the flow; Restart from mid-run always confirms first (reusing the same overwrite-confirmation dialog) and skips the stale "resumable save" startup screen on the resulting reload via a one-shot flag.
 
-Export overhauled since the paragraph above was first written: the Export button and a new "X" keybinding both open a modal menu (`Main.CreateExportMenu`) offering Last 3/5/10 turns (5 focused as the default) or Cancel; opening/using it only toggles UI visibility and reads the already-captured `DebugHistory`, so it cannot consume a turn, mutate `GameState`, or draw RNG. `DebugHistory.GetSnapshotBefore`/`GetLastTransitions` select a menu-sized slice - N transitions plus the one snapshot immediately before the first of them (e.g. last 5 of 25 turns yields state 20 then transitions 21..25) - unit tested against that exact case (`Tests/DebugHistoryTests.cs`). `DebugHistoryExporter.ToJson(DebugHistory, int, DebugHistoryExportContext)` serializes that slice as a `DebugHistoryExport`: schema version (2), a `RunId` generated once per session, the dungeon seed, a `FloorId` left `null` (still no floor concept), a best-effort `BuildVersion` (assembly version), a `ContentFingerprint` (`DebugHistoryExportContext.ComputeContentFingerprint`, a SHA-256 hash over the current weapon/monster rosters' gameplay fields), and compact `WeaponSummary`/`MonsterSummary` descriptions of every weapon and the actual spawn pool for the run (`Scripts/Game/DebugHistoryExportContext.cs`). `CellSnapshot.ActorInstanceIds` is now populated - derived at `GameSnapshot.Capture` time from the authoritative Player/Enemies lists, never a second source of truth, unit tested for both an empty cell and two actors sharing one cell (`Tests/GameSnapshotTests.cs`). Attacks are recorded properly instead of a default `(0,0)` target cell: `PlayerActionOutcome.TargetCell` is now `GridPosition?` (null for Attacked/Preparing), and both `PlayerActionOutcome`/`EnemyActionOutcome` carry an `AttackExecutionDetail` (attacker id, every cell the attack pattern swept, and a per-target `AttackHitDetail` with damage/remaining health/defeated) built by `AttackResolver.TryAttack`'s new `out` parameter - unit tested for a normal hit, a defeat, and the no-detection-target case (`Tests/WeaponAttackTests.cs`). `EnemyActionOutcome.ActorInstanceId` now identifies which enemy an outcome belongs to, previously only implied by list position. Remaining, deliberately deferred: no run/floor concept beyond the generated `RunId`/`null` `FloorId`, and the Main wiring (DebugHistory construction/append, menu open/close, export handlers) has no automated test - Main is a Godot node - only the pieces it calls are unit tested.
+Remaining: broader manual playtesting of the full flow is roadmap item 1 below - Main is a Godot node, so this wiring has no automated test beyond the pieces it calls.
 
-Acceptance: advancing the live game does not alter past snapshots; at turn 25 the retained states are 15..25; terminal turns are retained; exported JSON explains a blocked/prepared actor; export consumes no turn/RNG.
+Acceptance met: save/load plus the next command matches uninterrupted execution; an opened door and destroyed wall stay changed; terminal status persists; corrupt/incompatible saves do not overwrite a valid run; a content mismatch is reported and Continue is refused without touching the save.
 
-Risks: shallow copies, transposed rows, wrong retention count, omitting the last death/win turn, treating snapshots as screenshots or replay.
+Risk carried forward: RNG continuation after loading is explicitly out of scope (see Architecture backlog) - do not promise exact random continuation.
 
-## 4. Current-run save/resume (substantially done)
+## 5. Reproducible encounter setup and mod compatibility (done)
 
-Reuse snapshot data with a versioned save envelope and explicit restore mapping. Restore actual terrain, actors, equipment and intent before building fresh views. Save at setup and completed turns; keep a backup and safe file replacement. Retain persistent profile data separately when introduced later.
+- **Duplicate-ID detection**: `MonsterModLoader.LoadFromDirectory` tracks which file first defines each id across the whole load pass and disables (naming both files) any later mod file redefining it; `Main.BuildSpawnPool` rejects a mod monster that redefines a built-in id the same way. Regression tests confirm the static registries (`WeaponDefinitions`, `DiggingToolDefinitions`, `MonsterDefinitions`, `EnemyMovementBehaviors`) have no internal collisions.
+- **Stable definition ordering**: mod directory/file enumeration is sorted (`StringComparer.Ordinal`) instead of raw filesystem order; `EncounterPlanner.PlanSpawns` sorts the spawn pool by id before any seeded selection, so neither enumeration order nor `BuildSpawnPool`'s built-ins-then-mods concatenation order can change a run's encounter.
+- **Seeded enemy selection and placement**: `Scripts/Game/EncounterPlanner.cs` (pure, Godot-free) drives roster and placement from a `System.Random` seeded with the run's own dungeon seed, replacing the previous unseeded `Godot.RandomNumberGenerator`-based placement. Same seed/pool/rooms always produce the same roster, order and positions.
+- **Explicit spawn budget**: `EncounterPlanner.DefaultSpawnBudget` (5, matching the previous roster size) decouples enemy count from definition count; a full/exhausted room caps the result instead of throwing.
+- **Save-content fingerprint validation**: `Scripts/Game/ContentFingerprinter.cs` is a shared canonicalize-and-hash implementation used by both the debug export's whole-roster fingerprint and `RunSaveEnvelope`'s narrower, run-scoped fingerprint (only the weapon/tool/enemy definitions a specific run actually used, so unrelated content elsewhere can never invalidate an existing save). See milestone 4 for how Continue uses it.
 
-Done: `Scripts/Game/GameSnapshotRestore.cs` - `RestoreMap(GridSnapshot, seed)` rebuilds a `DungeonMap` from saved terrain/durability/IsOpen/zone-connection data, via a new internal `DungeonMap.RestoreCell` primitive (`SetTerrain` resets durability/IsOpen to defaults, which restore must not do - a saved cell may be mid-damage or an already-open door). `RestoreActor(ActorSnapshot, AttackState)` rebuilds an `ActorState` using only its existing constructor/setters (health restored via `TakeDamage(MaxHealth - snapshot.Health)`, since there is no direct setter) plus a new `AttackState.RestorePreparation` (unlike `BeginPreparation`, does not reset remaining turns to `Definition.PreparationTurns` - a restored attack may be mid-preparation). It takes an already-resolved `AttackState` rather than building one itself, since turning a WeaponId/DefinitionId into a definition is actor-type-specific. `DungeonMap`/`ActorState`/`AttackState` all stay unaware of the snapshot types; the restore orchestration lives in the Game layer, which already depends on Actors/Dungeon. Unit tested (`Tests/GameSnapshotRestoreTests.cs`, `Tests/ActorRestoreTests.cs`).
+Remaining: acceptance criteria are met at the unit level (`Tests/EncounterPlannerTests.cs` exercises determinism/ordering/budget-capping against synthetic rooms); no full `DungeonGenerator` + `EncounterPlanner` end-to-end fixed-seed integration test exists yet. Per-definition fingerprint diagnostics (identifying exactly *which* definition changed, not just that the combined fingerprint differs) and exported-build mod-folder resolution are deferred - see Architecture backlog.
 
-`Scripts/Game/RunSaveEnvelope.cs`/`RunSaveSerializer.cs` - `RunSaveEnvelope` wraps a `GameSnapshot` with `SchemaVersion` and `Seed` (generation config kept separate from committed state, per the spec's "Configuration" bucket). `RunSaveSerializer.ToJson`/`FromJson` round-trip it via `System.Text.Json`, returning a typed `RunSaveLoadOutcome` (Loaded/UnsupportedVersion/Invalid) instead of throwing - the "reject unsupported versions... with a useful error" requirement. Getting the round-trip actually correct needed two fixes caught by its own tests before merge: `GridSnapshot.Rows`'s exposed type had to exactly match its constructor parameter type for `System.Text.Json`'s parameterized-constructor binding to find it at all, and `Godot.Vector2` needed a hand-written `Vector2JsonConverter` (`Scripts/Game/GameJsonOptions.cs`, now shared with `DebugHistoryExporter`) since it silently deserialized to `(0,0)` otherwise. Unit tested for full round-trip fidelity and both rejection paths (`Tests/RunSaveSerializerTests.cs`).
+Acceptance met: same seed/config/content yields the same terrain, roster/order and positions; overfull rooms are handled; saves report incompatible/changed required content clearly.
 
-`RunSaveEnvelope` now also carries `SavedAtUtc` and a derived `IsComplete` (from `Snapshot.Status`, not a second independently-settable flag). `Scripts/Game/RunSaveFileService.cs` implements the single current-run slot plus recovery backup: `Save(directory, envelope)` writes and validates a temp file before touching anything already on disk, rotates the existing current save into the one backup slot, then atomically replaces current with the validated temp file - a failure at any point before the final rotation leaves existing current/backup files untouched. `Load(directory)` returns a typed `SaveFileLoadOutcome` (NoSaveFound/Loaded/LoadedFromBackup/Invalid); falls back to the backup only if it independently validates, and never deletes or modifies either file, so an invalid save stays on disk for the player to investigate or recover from manually. Takes the save directory as a parameter (mirroring `MonsterModLoader.LoadFromDirectory`) instead of calling `OS.GetUserDataDir()` itself, so it is unit tested against a plain temp directory with no Godot engine running (`Tests/RunSaveFileServiceTests.cs`) - Main will pass `OS.GetUserDataDir()` when wiring it up.
+## Active roadmap
 
-`Main.cs`'s boot flow now goes through `_Ready` -> `RunSaveFileService.Load(OS.GetUserDataDir())` -> `ShowStartupMenu`: with no resumable save it goes straight to New Run (unchanged fresh-generation flow, ending at weapon selection); with one, it shows Continue/New Run (`CreateStartupMenu`). `OnContinuePressed` resolves the saved WeaponId (`WeaponDefinitions.FindById`), ToolId (`DiggingToolDefinitions.FindById`) and every enemy's DefinitionId (against the run's actual `_spawnPool`, so mods are covered) via `TryResolveSaveDefinitions` before touching any state - a missing definition reports a useful error and disables Continue rather than partially tearing down the screen. `RestoreRun` then rebuilds the map (`GameSnapshotRestore.RestoreMap`), the player (`Player.RestoreFrom`, after `Attack.Equip` so the restored preparation isn't the one `Equip` cancels) and each enemy (`Enemy.RestoreFrom`) from the snapshot, skipping weapon selection entirely; a save whose status is already Won/Lost goes straight to the same end screen a live run would reach. `StartNewRun` shows an overwrite-confirmation panel first only when `_hasUnfinishedResumableRun` (a valid save whose `IsComplete` is false) - a save that's already finished, or none at all, needs no confirmation. Autosave fires from exactly two call sites: `SelectWeapon` (initial setup) and a new shared `FinishTurn` helper both `OnPlayerMoveRequested` branches funnel through (one save per completed turn, including the turn that ends in victory/death - never a second one for the same turn); failures are logged, not thrown, since a save is a side effect of playing. RNG continuation is out of scope per the acceptance note below.
+With the architecture foundation done, this is the active direction. Do not add new architecture ahead of what these steps need - pull from the Architecture backlog only when one of them actually requires an item.
 
-Remaining: broader manual playtesting of the Continue/New Run/overwrite-confirmation flow itself (Main is a Godot node, so this wiring has no automated test - only the pieces it calls do), and content-fingerprint-based detection of a save whose weapon/monster definitions changed shape rather than went missing entirely (deferred to milestone 5's fingerprinting work).
+1. **Manual verification pass.** Play through New Run, Continue, the overwrite-confirmation dialog, backup recovery (corrupt the current save file and confirm fallback/error behavior), a terminal (Won/Lost) save's Continue, and the pause menu (Restart/Quit/Resume) in the actual Godot editor. This is the one piece of milestone 4/5 with no automated coverage.
+2. **Explicit Wait command.** Add a command that consumes a turn without moving/attacking/digging, and verify one input still causes at most one turn (no double-turns, no wait-plus-move in the same input).
+3. **First tactical gameplay slice.** One new weapon, one distinct enemy with a readable attack pattern, one environmental hazard, and one designed encounter combining them. Implement the hazard directly against the current turn/state model - do not build a generalized hazard framework for the first one (see Architecture backlog: "Generalized effect or hazard frameworks").
+4. **Floor-clear objective and exit/transition.** Define what "clearing" a floor means and how the player leaves it. Include floor identity in saves and debug history once floors exist (`RunSaveEnvelope`/`DebugHistoryExportContext`'s `FloorId` is already a `null` placeholder for this).
+5. **Expand toward the fuller loop:** multiple floors, three stages, bosses, rewards, a difficulty knob, and basic persistent progression (one unlock, one cosmetic purchase, saved independently of run save/history).
 
-Acceptance: save/load plus the next command matches uninterrupted execution; an opened door and destroyed wall stay changed; terminal status persists; corrupt/incompatible saves do not overwrite a valid run.
+Pause after step 1 (or as needed between later steps) to choose concrete content together - a weapon, an enemy, a hazard - rather than deciding it unilaterally mid-implementation.
 
-Risks: fresh generation overwriting loaded state, missing mod definitions, stale asynchronous writes, reset preparation or RNG, duplicate view nodes. Do not promise exact random continuation until active RNG state is restorable.
+## Architecture backlog
 
-## 5. Reproducible encounter setup and mod compatibility
+Deferred until a concrete gameplay requirement needs them. Do not implement speculatively; each one adds real complexity for a need the roadmap above does not yet have.
 
-Seed spawning, sort content enumeration, detect duplicate IDs, record definition fingerprints, and introduce an explicit spawn budget so adding definitions does not require one enemy per definition. Resolve the exported-build mod path and validate missing/changed content for resume.
-
-Acceptance: same seed/config/content yields the same terrain, roster/order and positions; overfull rooms are handled; saves report incompatible required content clearly. Add fixed-seed generation and spawn coverage.
-
-Risks: changed RNG consumption, filesystem order, spawn exhaustion, silently altered saved enemy behavior. Implement minimum ID/fingerprint validation in milestone 4 before relying on modded saves.
-
-## 6. Input and presentation integration
-
-Keep the implemented arrow-key menu. Add explicit wait and a clear input policy around animations. Rebuild views safely on load and refresh neighboring terrain art when required.
-
-Acceptance: one input means at most one command; selection does not also move; wait consumes a turn; visual motion cannot affect combat; load/restart have no duplicate nodes.
-
-Risks: input leakage, double turns, stale cell graphics and animations controlling state.
-
-## 7. Floor objectives and transitions
-
-Separate room clear, floor exit and run completion. Define the exit requirement. Include floor identity in saves and history. Previous-floor persistence is only needed if backtracking becomes a feature.
-
-Acceptance: last-enemy death cannot bypass the chosen exit rule; each transition happens once; debug records across floors identify their maps.
-
-Risks: premature victory, losing relevant floor state, incompatible save schema changes.
-
-## 8. Tactical content and one environment experiment
-
-Add one non-linear attack or obstacle-aware enemy with explicit blocking rules. After state/turn capture is stable, experiment with one timed hazard or revisit disabled changing walls in a small test map; keep this separate from enabling it in procedural runs.
-
-Acceptance: intent is readable, navigation uses current terrain, environment changes occur at most once per turn before capture, and timers/RNG survive save/load if activated.
-
-Risks: pattern occlusion, actor trapping, inaccessible routes, snapshotting before hazards finish. See [Gameplay ideas](Turn_Dungeon_Gameplay_Ideas.md) for optional content.
-
-## 9. Difficulty and run rewards
-
-Add a small RunConfig and one useful reward/spending loop. Include configuration and rewards in run snapshots.
-
-Acceptance: modifiers apply once, definitions remain unchanged, and rewards cannot be duplicated by loading.
-
-Risks: double modifiers/rewards and unbalanced content combinations.
-
-## 10. Persistent progression
-
-Save one unlock and one cosmetic purchase first, independently of run save/history.
-
-Acceptance: save/load preserves balances and ownership; defaults are defined; temporary effects do not persist; loading a run does not roll back or duplicate profile rewards.
-
-Risks: currency loss, purchase duplication and run/profile disagreement.
+- **Per-definition fingerprint diagnostics** - identify exactly which weapon/tool/monster definition changed on a fingerprint mismatch, rather than only "content changed." Needed once mod compatibility errors need to be actionable rather than just accurate.
+- **Save migration between schema versions** - `RunSaveEnvelope`/`RunSaveSerializer` currently reject an unsupported version outright rather than upgrading it. Needed once a schema change would otherwise strand existing players' saves.
+- **Exact RNG continuation after loading** - Continue currently restores committed state, not in-flight RNG stream position. Needed only if some mechanic's exact random continuation (not just its resulting state) becomes gameplay-visible.
+- **Exported-build mod-folder handling** - `MonsterModLoader` resolves `res://mods` via `ProjectSettings.GlobalizePath`, untested against an actual exported (non-editor) build's filesystem layout. Needed before shipping mod support outside the editor.
+- **Full replay support** - debug history is inspectable evidence (up to 11 states), not a replay engine. Needed only if replay itself becomes a feature, not a debugging aid.
+- **Asynchronous save writing** - autosave currently writes synchronously on the turn-completion path. Needed if save file size or frequency ever causes a noticeable hitch.
+- **Generalized effect or hazard frameworks** - implement the first hazard/tactical mechanic directly against the current model (roadmap item 3). Extract a reusable framework only after multiple implemented mechanics demonstrate the same lifecycle - not before.
+- **Previous-floor persistence** - unneeded unless backtracking between floors becomes a feature.
+- **Complex animation/input-lock handling** - unneeded until animations that could race with input actually exist.
 
 ## Change discipline
 
@@ -130,3 +102,4 @@ Risks: currency loss, purchase duplication and run/profile disagreement.
 - Run relevant behavior tests for code changes. Documentation changes need link/status checks, not new runtime tests.
 - No ECS, global event bus, DI framework, generic effect language or full replay engine.
 - Keep full copied snapshots and the existing generator until a concrete requirement justifies more complexity.
+- Use a direct implementation for the first instance of a new kind of mechanic; extract a framework only after repetition demonstrates the shared shape.
