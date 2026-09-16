@@ -12,8 +12,8 @@ This roadmap separates completed foundation work from planned changes. Save/resu
 - Door IsOpen state and visual removal for player/enemy occupancy; doors remain walkable before opening.
 - Keyboard weapon selection with initial focus, arrow neighbors, confirm and 1/2 shortcuts.
 - Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods.
-- 65 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, GameState, TurnResolver, and enemy movement behaviors.
-- Milestone 1 (ActorState/GameState/grid combat) is done; milestone 2 (complete-turn execution) is substantially done - see below.
+- 71 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, GameState, TurnResolver, enemy movement behaviors, and GameSnapshot.
+- Milestone 1 (ActorState/GameState/grid combat) is done; milestone 2 (complete-turn execution) is substantially done; milestone 3 (snapshot capture/debug history) is started - see below.
 
 Tree/growing walls remain disabled in generation and the turn loop. Do not re-enable them incidentally. Full turns, save/load and debug export have no implementation or tests yet.
 
@@ -45,9 +45,13 @@ Acceptance: plain NUnit tests cover complete turns, dead enemies never act, late
 
 Risks: extra enemy phases, chaser timing changes, turning after attacks, node-deletion timing leaking into rules. Keep dynamic terrain disabled.
 
-## 3. Snapshot capture and 10-turn debug history
+## 3. Snapshot capture and 10-turn debug history (started)
 
 Implement independent full snapshots and a bounded history using [the snapshot contract](SAVE_AND_DEBUG_HISTORY.md). Store 10 transitions plus their initial state, with 2D cells, actor details, commands and structured outcomes. Add Export Debug History during play and on the end screen.
+
+Done: `Scripts/Game/GameSnapshot.cs` - `GameSnapshot.Capture(GameState)` deep-copies the map (`GridSnapshot`/`CellSnapshot`: terrain, durability, IsOpen, zone/connection ids) and every actor (`ActorSnapshot`: instance/definition id, position, health, facing, prepared-move flag, weapon/tool ids, attack-preparation state) into independent, serializable objects. Unit tested that later mutating the live `DungeonMap`/`ActorState` cannot change an already-captured snapshot (`Tests/GameSnapshotTests.cs`).
+
+Remaining: the 10-transition bounded history ring (rollover, retention count), typed per-turn outcomes (Move/Blocked/Dig/TerrainDestroyed/DoorOpened/Prepare/Attack/Damage/Death/Turn) beyond what `PlayerActionOutcome`/`EnemyActionOutcome` already carry, wiring capture into Main after each completed turn, the Export Debug History action/JSON writer, and the identity/config fields `GameSnapshot` currently omits (schema version, run/floor id, generation request beyond seed, content fingerprints) since no run/floor concept exists yet to make them meaningful.
 
 Acceptance: advancing the live game does not alter past snapshots; at turn 25 the retained states are 15..25; terminal turns are retained; exported JSON explains a blocked/prepared actor; export consumes no turn/RNG.
 
