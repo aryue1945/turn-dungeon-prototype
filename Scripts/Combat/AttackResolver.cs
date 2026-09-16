@@ -140,12 +140,20 @@ public static class AttackResolver
 
 			target.TakeDamage(definition.Damage);
 			hitTargets.Add(target);
+
+			bool defeated = !target.IsAlive;
+			GridPosition? knockedBackTo = null;
+
+			if (!defeated && definition.Knockback)
+				knockedBackTo = TryKnockback(target, direction, attacker, combatants, isWallAt);
+
 			hits.Add(new AttackHitDetail(
 				target.InstanceId,
 				position,
 				definition.Damage,
 				target.Health,
-				!target.IsAlive
+				defeated,
+				knockedBackTo
 			));
 
 			if (hitTargets.Count >= definition.MaxTargets)
@@ -153,6 +161,30 @@ public static class AttackResolver
 		}
 
 		return new AttackExecutionDetail(attacker.InstanceId, affectedCells, hits);
+	}
+
+	// Pushes target one cell in direction if the destination is walkable
+	// and unoccupied; a blocked push still leaves the damage already
+	// applied by the caller in place, it just does not move anyone
+	// (War Hammer spec). Returns the destination if the push happened,
+	// null otherwise.
+	private static GridPosition? TryKnockback(
+		ICombatant target,
+		Vector2 direction,
+		ICombatant attacker,
+		IReadOnlyList<ICombatant> combatants,
+		Func<GridPosition, bool> isWallAt)
+	{
+		GridPosition destination = new(
+			target.GridPosition.X + (int)direction.X,
+			target.GridPosition.Y + (int)direction.Y
+		);
+
+		if (isWallAt(destination) || FindCombatantAt(destination, attacker, combatants) != null)
+			return null;
+
+		target.Knockback(direction);
+		return destination;
 	}
 
 	private static GridPosition GetPatternPosition(

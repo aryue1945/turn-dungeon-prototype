@@ -197,12 +197,20 @@ public sealed class TurnResolverTests
 				GridPosition.Y + (int)direction.Y
 			);
 		}
+
+		public void Knockback(Vector2 direction)
+		{
+			GridPosition = new GridPosition(
+				GridPosition.X + (int)direction.X,
+				GridPosition.Y + (int)direction.Y
+			);
+		}
 	}
 
 	private sealed class FakeCombatant : ICombatant
 	{
 		public System.Guid InstanceId { get; } = System.Guid.NewGuid();
-		public GridPosition GridPosition { get; }
+		public GridPosition GridPosition { get; private set; }
 		public CombatFaction Faction { get; }
 		public int Health { get; private set; } = 3;
 		public bool IsAlive => Health > 0;
@@ -211,6 +219,14 @@ public sealed class TurnResolverTests
 		{
 			GridPosition = gridPosition;
 			Faction = faction;
+		}
+
+		public void Knockback(Vector2 direction)
+		{
+			GridPosition = new GridPosition(
+				GridPosition.X + (int)direction.X,
+				GridPosition.Y + (int)direction.Y
+			);
 		}
 
 		public void TakeDamage(int damage)

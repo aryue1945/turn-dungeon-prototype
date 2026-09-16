@@ -64,10 +64,31 @@ public static class WeaponDefinitions
 		)
 	);
 
+	// First tactical-slice weapon (NEXT_STEPS roadmap item 3): same reach
+	// and damage as the basic sword, but pushes a surviving target one
+	// cell back when the destination is walkable and unoccupied
+	// (AttackDefinition.Knockback, applied in AttackResolver.ExecuteAttack).
+	public static readonly WeaponDefinition WarHammer = new(
+		id: "core.war_hammer",
+		name: "War Hammer",
+		primaryAttack: new AttackDefinition(
+			name: "Hammer Slam",
+			damage: 1,
+			preparationTurns: 0,
+			detectionOffsets: OneCellForward,
+			attackOffsets: OneCellForward,
+			targetRule: AttackTargetRule.OpponentsOnly,
+			stopsAtWalls: true,
+			maxTargets: 1,
+			knockback: true
+		)
+	);
+
 	public static readonly System.Collections.Generic.IReadOnlyList<WeaponDefinition> All = new[]
 	{
 		BasicSword,
-		LongSword
+		LongSword,
+		WarHammer
 	};
 
 	// Resolves a saved WeaponId back into its definition for milestone-4

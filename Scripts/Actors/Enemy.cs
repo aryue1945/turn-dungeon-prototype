@@ -193,6 +193,18 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		return EnemyActionResult.Moved;
 	}
 
+	// ICombatant.Knockback: identical mechanics to the move step in
+	// TryMoveForward, but driven by AttackResolver against a target enemy
+	// rather than this enemy's own movement behavior.
+	public void Knockback(Vector2 direction)
+	{
+		Position += direction * TileSize;
+		_state.MoveTo(new GridPosition(
+			_state.GridPosition.X + (int)direction.X,
+			_state.GridPosition.Y + (int)direction.Y
+		));
+	}
+
 	private void ApplyTypeDisplay()
 	{
 		Sprite2D sprite = GetNode<Sprite2D>("Sprite2D");

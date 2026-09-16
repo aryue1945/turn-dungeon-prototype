@@ -41,6 +41,12 @@ public interface ICombatant
 	int Health { get; }
 
 	void TakeDamage(int damage);
+
+	// Moves exactly one cell in direction (a cardinal unit vector), syncing
+	// both authoritative GridPosition and pixel Position. The caller
+	// (AttackResolver) is responsible for confirming the destination is
+	// walkable and unoccupied first - this method itself does not check.
+	void Knockback(Vector2 direction);
 }
 
 public sealed class AttackDefinition
@@ -53,6 +59,13 @@ public sealed class AttackDefinition
 	public AttackTargetRule TargetRule { get; }
 	public bool StopsAtWalls { get; }
 	public int MaxTargets { get; }
+
+	// War Hammer support: a surviving hit target is pushed one cell in the
+	// attack direction if that destination is walkable and unoccupied
+	// (AttackResolver.ExecuteAttack) - a plain bool rather than a distance,
+	// since nothing yet needs more than one cell. Generalize only once a
+	// second mechanic needs a different distance.
+	public bool Knockback { get; }
 
 	// Not yet consumed by AttackResolver. Carried through so data-driven
 	// attacks (e.g. modded monsters) can tag a status effect ahead of the
@@ -68,7 +81,8 @@ public sealed class AttackDefinition
 		AttackTargetRule targetRule,
 		bool stopsAtWalls,
 		int maxTargets,
-		string statusEffectId = null)
+		string statusEffectId = null,
+		bool knockback = false)
 	{
 		Name = name;
 		Damage = damage;
@@ -79,6 +93,7 @@ public sealed class AttackDefinition
 		StopsAtWalls = stopsAtWalls;
 		MaxTargets = maxTargets;
 		StatusEffectId = statusEffectId;
+		Knockback = knockback;
 	}
 }
 

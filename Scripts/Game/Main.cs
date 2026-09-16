@@ -158,6 +158,8 @@ public partial class Main : Node2D
 				OnBasicSwordSelected();
 			else if (weaponKey.Keycode == Key.Key2)
 				OnLongSwordSelected();
+			else if (weaponKey.Keycode == Key.Key3)
+				OnWarHammerSelected();
 			else
 				return;
 
@@ -734,6 +736,14 @@ public partial class Main : Node2D
 		longSwordButton.Pressed += OnLongSwordSelected;
 		selectionBox.AddChild(longSwordButton);
 
+		Button warHammerButton = new()
+		{
+			CustomMinimumSize = new Vector2(208, 44),
+			Text = "[3] War Hammer"
+		};
+		warHammerButton.Pressed += OnWarHammerSelected;
+		selectionBox.AddChild(warHammerButton);
+
 		Label keyboardHint = new()
 		{
 			Text = "Up/Down, then Enter or Space",
@@ -743,13 +753,17 @@ public partial class Main : Node2D
 		selectionBox.AddChild(keyboardHint);
 
 		basicSwordButton.FocusNeighborTop =
-			basicSwordButton.GetPathTo(longSwordButton);
+			basicSwordButton.GetPathTo(warHammerButton);
 		basicSwordButton.FocusNeighborBottom =
 			basicSwordButton.GetPathTo(longSwordButton);
 		longSwordButton.FocusNeighborTop =
 			longSwordButton.GetPathTo(basicSwordButton);
 		longSwordButton.FocusNeighborBottom =
-			longSwordButton.GetPathTo(basicSwordButton);
+			longSwordButton.GetPathTo(warHammerButton);
+		warHammerButton.FocusNeighborTop =
+			warHammerButton.GetPathTo(longSwordButton);
+		warHammerButton.FocusNeighborBottom =
+			warHammerButton.GetPathTo(basicSwordButton);
 	}
 
 	private void ShowWeaponSelection()
@@ -1599,6 +1613,11 @@ public partial class Main : Node2D
 	private void OnLongSwordSelected()
 	{
 		SelectWeapon(WeaponDefinitions.LongSword);
+	}
+
+	private void OnWarHammerSelected()
+	{
+		SelectWeapon(WeaponDefinitions.WarHammer);
 	}
 
 	private void SelectWeapon(WeaponDefinition weapon)
