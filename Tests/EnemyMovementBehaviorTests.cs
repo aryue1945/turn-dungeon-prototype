@@ -40,6 +40,71 @@ public sealed class EnemyMovementBehaviorTests
 	}
 
 	[Test]
+	public void ChargingBeetleBehavior_FirstTurnPreparesTowardThePlayer()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0));
+		FakeCombatant player = new(new GridPosition(0, 4));
+
+		EnemyActionResult result = new ChargingBeetleBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Prepared));
+		Assert.That(host.HasPreparedMove, Is.True);
+		Assert.That(host.FacingDirection, Is.EqualTo(Vector2.Down));
+		Assert.That(host.MoveForwardCallCount, Is.EqualTo(0));
+	}
+
+	[Test]
+	public void ChargingBeetleBehavior_SecondTurnChargesTwoCellsWhenClear()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0));
+		FakeCombatant player = new(new GridPosition(0, 4));
+		ChargingBeetleBehavior behavior = new();
+		host.NextMoveResult = EnemyActionResult.Moved;
+
+		behavior.TakeTurn(host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+		EnemyActionResult result = behavior.TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Moved));
+		Assert.That(host.HasPreparedMove, Is.False);
+		Assert.That(host.MoveForwardCallCount, Is.EqualTo(2), "A clear charge takes exactly two steps.");
+	}
+
+	[Test]
+	public void ChargingBeetleBehavior_StopsAfterOneCellWhenTheSecondIsBlocked()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0));
+		FakeCombatant player = new(new GridPosition(0, 4));
+		ChargingBeetleBehavior behavior = new();
+		host.NextMoveResult = EnemyActionResult.Blocked;
+
+		behavior.TakeTurn(host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+		EnemyActionResult result = behavior.TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Blocked));
+		Assert.That(host.MoveForwardCallCount, Is.EqualTo(1), "A blocked first step must not attempt a second.");
+	}
+
+	[Test]
+	public void ChargingBeetleBehavior_StopsTheChargeWhenItAttacks()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0));
+		FakeCombatant player = new(new GridPosition(0, 1));
+		ChargingBeetleBehavior behavior = new();
+		host.NextMoveResult = EnemyActionResult.Attacked("Charge Slam", null);
+
+		behavior.TakeTurn(host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+		EnemyActionResult result = behavior.TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Attacked));
+		Assert.That(result.AttackName, Is.EqualTo("Charge Slam"));
+		Assert.That(host.MoveForwardCallCount, Is.EqualTo(1), "An attack on the first step must not attempt a second.");
+	}
+
+	[Test]
 	public void PatrolBehavior_TurnsRightWhenBlocked()
 	{
 		FakeMovementHost host = new(new GridPosition(0, 0));

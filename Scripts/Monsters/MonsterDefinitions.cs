@@ -52,12 +52,26 @@ public static class MonsterDefinitions
 		attacks: new[] { AttackDefinitions.BasicEnemyStrike }
 	);
 
+	// First tactical-slice enemy (NEXT_STEPS roadmap item 3): telegraphs a
+	// charge direction for one turn, then charges up to two cells
+	// (ChargingBeetleBehavior). Reuses the Slow Chaser's sprite as a
+	// placeholder pending real art.
+	public static readonly MonsterDefinition ChargingBeetle = new(
+		id: "core.charging_beetle",
+		name: "Charging Beetle",
+		health: 3,
+		spritePath: "res://Art/Actors/enemy_slow_chaser.png",
+		movementBehaviorId: "charge_beetle",
+		attacks: new[] { AttackDefinitions.ChargeSlam }
+	);
+
 	public static readonly IReadOnlyList<MonsterDefinition> All = new[]
 	{
 		SlowChaser,
 		Patroller,
 		LeftTurner,
 		RightTurner,
-		Stationary
+		Stationary,
+		ChargingBeetle
 	};
 }

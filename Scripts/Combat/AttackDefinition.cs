@@ -178,4 +178,20 @@ public static class AttackDefinitions
 		stopsAtWalls: true,
 		maxTargets: 1
 	);
+
+	// Charging Beetle's attack (NEXT_STEPS roadmap item 3) - triggers via
+	// the same one-cell-forward detection as any other enemy attack, so a
+	// charge that ends adjacent to a target attacks instead of moving onto
+	// it, exactly like Basic Enemy Strike already does for slower enemies.
+	// Hits harder to make the charge feel distinct.
+	public static readonly AttackDefinition ChargeSlam = new(
+		name: "Charge Slam",
+		damage: 2,
+		preparationTurns: 0,
+		detectionOffsets: OneCellForward,
+		attackOffsets: OneCellForward,
+		targetRule: AttackTargetRule.OpponentsOnly,
+		stopsAtWalls: true,
+		maxTargets: 1
+	);
 }
