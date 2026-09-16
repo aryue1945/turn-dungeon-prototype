@@ -94,6 +94,7 @@ Deferred until a concrete gameplay requirement needs them. Do not implement spec
 - **Generalized effect or hazard frameworks** - implement the first hazard/tactical mechanic directly against the current model (roadmap item 3). Extract a reusable framework only after multiple implemented mechanics demonstrate the same lifecycle - not before.
 - **Previous-floor persistence** - unneeded unless backtracking between floors becomes a feature.
 - **Complex animation/input-lock handling** - unneeded until animations that could race with input actually exist.
+- **Semantic save validation** - validate persisted actor health before restoration. Invalid values such as `MaxHealth <= 0`, `Health < 0`, or `Health > MaxHealth` currently restore through `GameSnapshotRestore.RestoreActor`'s constructor/`TakeDamage`-delta behavior instead of being rejected in favor of the backup, the way a schema/parse failure already is. A hand-edited or corrupted-but-valid-JSON save with `Health > MaxHealth` silently ends up at full health rather than triggering the existing invalid-save/backup-recovery path. Consistently edited values (e.g. `30`/`30`) remain restorable and must stay so. Implement when broader save validation becomes necessary - not before, and do not change `TakeDamage`, the current restore logic, or backup recovery to address this in the meantime.
 
 ## Change discipline
 
