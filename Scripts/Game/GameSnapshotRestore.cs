@@ -35,7 +35,9 @@ public static class GameSnapshotRestore
 					cell.IsOpen,
 					cell.ZoneId,
 					cell.ConnectedZoneA,
-					cell.ConnectedZoneB
+					cell.ConnectedZoneB,
+					cell.SpikeTrapPhase,
+					cell.SpikeTrapPhaseTurnsRemaining
 				);
 			}
 		}

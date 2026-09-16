@@ -1529,9 +1529,32 @@ public partial class Main : Node2D
 
 		List<EnemyActionOutcome> enemyOutcomes = TakeEnemyTurns();
 
+		RunEnvironmentPhase();
+
 		RemoveDefeatedEnemies();
 		CheckForVictory();
 		FinishTurn(direction, outcome, enemyOutcomes);
+	}
+
+	// Spike traps tick and damage after enemy actions, before the turn's
+	// snapshot/autosave (NEXT_STEPS roadmap item 3) - never on a turn that
+	// already ended from the player's own action, since that branch returns
+	// before enemies (and now the environment) ever act. Defeat caused by a
+	// spike is caught by the RemoveDefeatedEnemies/CheckForVictory call
+	// immediately after this, the same as defeat caused by an enemy.
+	private void RunEnvironmentPhase()
+	{
+		IReadOnlyList<GridPosition> changedCells = EnvironmentPhaseResolver.ResolveSpikeTraps(
+			_dungeonMap,
+			GetCombatants()
+		);
+
+		foreach (GridPosition position in changedCells)
+		{
+			SpikeTrapPhase phase = _dungeonMap.GetCell(position.X, position.Y).SpikeTrapPhase;
+			GD.Print($"Spike trap at {position} is now {phase}.");
+			_dungeonRenderer.RefreshCell(_dungeonMap, position.X, position.Y);
+		}
 	}
 
 	// Completes bookkeeping for one fully-resolved turn: advances GameState,
