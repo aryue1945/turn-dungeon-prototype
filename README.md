@@ -14,6 +14,7 @@ Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (
 - Doors are walkable before opening. Player or enemy occupancy sets `IsOpen`; the door graphic disappears.
 - Defeat all enemies to win; player death ends the game. Restart creates a new setup.
 - Camera: mouse wheel or +/- to zoom, 0 to reset during gameplay. No explicit wait command yet.
+- An "Export Debug History" HUD button writes the last 10 turns plus a boundary snapshot to a JSON file under the user data directory, for diagnosing unexpected behavior.
 
 ## Dungeon and monsters
 
@@ -39,11 +40,11 @@ dotnet build "New Game Project.csproj"
 dotnet test Tests/TurnDungeon.Tests.csproj
 ```
 
-The source contains 80 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading, actor state, game state, turn resolution, enemy movement behaviors, game snapshots, and debug history. Full-turn and Godot input/rendering integration coverage are still missing.
+The source contains 83 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading, actor state, game state, turn resolution, enemy movement behaviors, game snapshots, debug history, and its exporter. Full-turn and Godot input/rendering integration coverage are still missing.
 
 ## Architecture and next work
 
-Terrain authority is already unified, and NEXT_STEPS milestone 1 (authoritative actor state and grid combat) is done: both the player's and enemies' unique instance id, definition id, grid position, health, facing, equipment ids and attack reference now live in an authoritative `ActorState` (including the slow chaser's prepared-move flag, previously a private field), and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. Milestone 2 (complete-turn execution) is substantially done: `TurnResolver.ResolvePlayerAction` fully owns the player's attack/dig/move rules; movement behaviors return an explicit outcome instead of deciding everything through callbacks, so all four are now unit tested with no Godot node; `TurnResolver.ResolveEnemyAction` wraps one enemy's turn plus door-opening and reports that outcome; a `GameState` aggregate (map, player/enemy state references, turn number, run status) exists, and victory/death now reads from it (`IsPlayerDefeated`/`AreAllEnemiesDefeated`) instead of Main's own actor list/health field. Milestone 3 (snapshot capture and 10-turn debug history) is in progress: `GameSnapshot.Capture` deep-copies a `GameState` into independent, serializable data, `DebugHistory` keeps the last 10 turn transitions plus a boundary snapshot on top of it, and Main now feeds one during play (initial snapshot on weapon choice, a transition appended at each completion boundary). Next: add the Export Debug History action.
+Terrain authority is already unified, and NEXT_STEPS milestone 1 (authoritative actor state and grid combat) is done: both the player's and enemies' unique instance id, definition id, grid position, health, facing, equipment ids and attack reference now live in an authoritative `ActorState` (including the slow chaser's prepared-move flag, previously a private field), and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. Milestone 2 (complete-turn execution) is substantially done: `TurnResolver.ResolvePlayerAction` fully owns the player's attack/dig/move rules; movement behaviors return an explicit outcome instead of deciding everything through callbacks, so all four are now unit tested with no Godot node; `TurnResolver.ResolveEnemyAction` wraps one enemy's turn plus door-opening and reports that outcome; a `GameState` aggregate (map, player/enemy state references, turn number, run status) exists, and victory/death now reads from it (`IsPlayerDefeated`/`AreAllEnemiesDefeated`) instead of Main's own actor list/health field. Milestone 3 (snapshot capture and 10-turn debug history) is substantially done: `GameSnapshot.Capture` deep-copies a `GameState` into independent, serializable data, `DebugHistory` keeps the last 10 turn transitions plus a boundary snapshot on top of it, Main feeds one during play, and an "Export Debug History" HUD button writes it out as readable JSON. Next: versioned run save/resume (milestone 4), reusing this snapshot data.
 
 Approved direction to implement after that foundation:
 
@@ -66,5 +67,5 @@ Save/resume and debug history are **not implemented**. Debug history is not a pr
 
 - `GameState` is kept in sync and victory/death now read from it, but full turn execution does not; `TurnResolver` resolves the player's and each enemy's action with real typed outcomes, but the enemy loop, input rejection and completion boundaries are still Main's own code.
 - A map seed does not reproduce enemy placement or guarantee the same mod roster/order.
-- No run save/load, debug-history export, persistent progression, or difficulty modifiers.
+- No run save/load, persistent progression, or difficulty modifiers.
 - Closed-door blocking, floor transitions, wait, and obstacle-aware navigation remain open.

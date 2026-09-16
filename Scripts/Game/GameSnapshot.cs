@@ -44,6 +44,10 @@ public sealed class GridSnapshot
 	public int Width { get; }
 	public int Height { get; }
 
+	// Row-major cells[y][x], exposed for export/serialization - GetCell is
+	// the normal access path for code that already knows x/y.
+	public IReadOnlyList<IReadOnlyList<CellSnapshot>> Rows => _rows;
+
 	public GridSnapshot(int width, int height, CellSnapshot[][] rows)
 	{
 		Width = width;
