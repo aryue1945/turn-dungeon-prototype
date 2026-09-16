@@ -35,11 +35,28 @@ public partial class Main : Node2D
 	private Button _continueButton;
 	private Label _startupErrorLabel;
 	private Control _confirmOverwriteOverlay;
+	private Button _confirmOverwriteCancelButton;
+	private Control _pauseMenuOverlay;
+	private Button _pauseRestartButton;
+	private Button _quitButton;
 	private bool _gameStarted;
 	private bool _gameEnded;
 	private bool _wasPlayerInputEnabledBeforeExportMenu;
+	private bool _wasPlayerInputEnabledBeforePauseMenu;
 	private SaveFileLoadOutcome _pendingLoadOutcome;
 	private bool _hasUnfinishedResumableRun;
+	private OverwriteConfirmationReason _overwriteConfirmationReason;
+	private static bool _skipStartupMenuForNewRun;
+
+	// Which flow opened the "this will overwrite..." dialog, so its
+	// Confirm/Cancel buttons know whether to build a fresh run in place
+	// (already at the startup screen, nothing to tear down) or reload the
+	// whole scene (abandoning a run in progress via the pause menu).
+	private enum OverwriteConfirmationReason
+	{
+		NewRunFromStartup,
+		RestartFromPauseMenu
+	}
 
 	private PackedScene _enemyScene;
 	private PackedScene _wallScene;
@@ -103,6 +120,7 @@ public partial class Main : Node2D
 		CreateWeaponSelection();
 		CreateStartupMenu();
 		CreateOverwriteConfirmation();
+		CreatePauseMenu();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
 		_player.HealthChanged += OnPlayerHealthChanged;
@@ -111,7 +129,21 @@ public partial class Main : Node2D
 		_player.SetProcessUnhandledInput(false);
 
 		_pendingLoadOutcome = RunSaveFileService.Load(OS.GetUserDataDir());
-		ShowStartupMenu();
+
+		// Set by the pause menu's Restart (which reloads this scene to tear
+		// down a live run) right before abandoning a run that was still in
+		// progress - its own on-disk save is therefore still "resumable" by
+		// ShowStartupMenu's definition, which would otherwise re-offer
+		// Continue for the very run the player just chose to discard.
+		if (_skipStartupMenuForNewRun)
+		{
+			_skipStartupMenuForNewRun = false;
+			StartNewRun(confirmed: true);
+		}
+		else
+		{
+			ShowStartupMenu();
+		}
 	}
 
 	public override void _UnhandledInput(InputEvent @event)
@@ -174,6 +206,9 @@ public partial class Main : Node2D
 					return;
 
 				OnRestartPressed();
+				break;
+			case Key.Escape:
+				OnEscapePressed();
 				break;
 			default:
 				return;
@@ -546,6 +581,19 @@ public partial class Main : Node2D
 		_restartButton.Pressed += OnRestartPressed;
 		endGameBox.AddChild(_restartButton);
 
+		_quitButton = new Button
+		{
+			CustomMinimumSize = new Vector2(160, 40),
+			Text = "Quit"
+		};
+		_quitButton.Pressed += OnQuitPressed;
+		endGameBox.AddChild(_quitButton);
+
+		_restartButton.FocusNeighborTop = _restartButton.GetPathTo(_quitButton);
+		_restartButton.FocusNeighborBottom = _restartButton.GetPathTo(_quitButton);
+		_quitButton.FocusNeighborTop = _quitButton.GetPathTo(_restartButton);
+		_quitButton.FocusNeighborBottom = _quitButton.GetPathTo(_restartButton);
+
 		CreateExportMenu();
 	}
 
@@ -870,6 +918,157 @@ public partial class Main : Node2D
 		};
 		cancelButton.Pressed += OnCancelOverwritePressed;
 		confirmBox.AddChild(cancelButton);
+		_confirmOverwriteCancelButton = cancelButton;
+
+		confirmButton.FocusNeighborTop = confirmButton.GetPathTo(cancelButton);
+		confirmButton.FocusNeighborBottom = confirmButton.GetPathTo(cancelButton);
+		cancelButton.FocusNeighborTop = cancelButton.GetPathTo(confirmButton);
+		cancelButton.FocusNeighborBottom = cancelButton.GetPathTo(confirmButton);
+	}
+
+	// A minimal ESC-triggered pause menu, only reachable during active play
+	// (OpenPauseMenu gates on _gameStarted/_gameEnded) - Restart routes
+	// through the same overwrite-confirmation dialog New Run uses, tagged
+	// with which flow opened it (OverwriteConfirmationReason) so Confirm/
+	// Cancel do the right thing either way.
+	private void CreatePauseMenu()
+	{
+		CanvasLayer pauseLayer = new()
+		{
+			Layer = 10
+		};
+		AddChild(pauseLayer);
+
+		Control pauseRoot = CreateFullRectRoot(pauseLayer);
+		pauseRoot.Visible = false;
+		_pauseMenuOverlay = pauseRoot;
+
+		ColorRect backdrop = new()
+		{
+			Color = new Color(0, 0, 0, 0.55f)
+		};
+		pauseRoot.AddChild(backdrop);
+		backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		CenterContainer pauseCenter = new();
+		pauseRoot.AddChild(pauseCenter);
+		pauseCenter.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		PanelContainer pausePanel = new()
+		{
+			CustomMinimumSize = new Vector2(260, 190)
+		};
+		pauseCenter.AddChild(pausePanel);
+
+		MarginContainer pauseMargin = new();
+		pauseMargin.AddThemeConstantOverride("margin_left", 20);
+		pauseMargin.AddThemeConstantOverride("margin_top", 16);
+		pauseMargin.AddThemeConstantOverride("margin_right", 20);
+		pauseMargin.AddThemeConstantOverride("margin_bottom", 16);
+		pausePanel.AddChild(pauseMargin);
+
+		VBoxContainer pauseBox = new();
+		pauseBox.AddThemeConstantOverride("separation", 10);
+		pauseMargin.AddChild(pauseBox);
+
+		Label titleLabel = new()
+		{
+			CustomMinimumSize = new Vector2(208, 28),
+			Text = "Paused",
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		pauseBox.AddChild(titleLabel);
+
+		_pauseRestartButton = new Button
+		{
+			CustomMinimumSize = new Vector2(208, 40),
+			Text = "Restart"
+		};
+		_pauseRestartButton.Pressed += OnPauseRestartPressed;
+		pauseBox.AddChild(_pauseRestartButton);
+
+		Button pauseQuitButton = new()
+		{
+			CustomMinimumSize = new Vector2(208, 40),
+			Text = "Quit"
+		};
+		pauseQuitButton.Pressed += OnQuitPressed;
+		pauseBox.AddChild(pauseQuitButton);
+
+		Button resumeButton = new()
+		{
+			CustomMinimumSize = new Vector2(208, 40),
+			Text = "Resume"
+		};
+		resumeButton.Pressed += ClosePauseMenu;
+		pauseBox.AddChild(resumeButton);
+
+		_pauseRestartButton.FocusNeighborTop = _pauseRestartButton.GetPathTo(resumeButton);
+		_pauseRestartButton.FocusNeighborBottom = _pauseRestartButton.GetPathTo(pauseQuitButton);
+		pauseQuitButton.FocusNeighborTop = pauseQuitButton.GetPathTo(_pauseRestartButton);
+		pauseQuitButton.FocusNeighborBottom = pauseQuitButton.GetPathTo(resumeButton);
+		resumeButton.FocusNeighborTop = resumeButton.GetPathTo(pauseQuitButton);
+		resumeButton.FocusNeighborBottom = resumeButton.GetPathTo(_pauseRestartButton);
+	}
+
+	// ESC closes whichever modal is already open (export menu first, then
+	// pause menu) rather than stacking a second one on top, and otherwise
+	// opens the pause menu.
+	private void OnEscapePressed()
+	{
+		if (_exportMenuOverlay.Visible)
+		{
+			CloseExportMenu();
+			return;
+		}
+
+		if (_pauseMenuOverlay.Visible)
+		{
+			ClosePauseMenu();
+			return;
+		}
+
+		if (_confirmOverwriteOverlay.Visible)
+			return;
+
+		OpenPauseMenu();
+	}
+
+	private void OpenPauseMenu()
+	{
+		if (!_gameStarted || _gameEnded || _pauseMenuOverlay.Visible)
+			return;
+
+		_wasPlayerInputEnabledBeforePauseMenu = true;
+		_player.SetProcessUnhandledInput(false);
+
+		_pauseMenuOverlay.Visible = true;
+		_pauseRestartButton.GrabFocus();
+	}
+
+	private void ClosePauseMenu()
+	{
+		_pauseMenuOverlay.Visible = false;
+
+		if (_wasPlayerInputEnabledBeforePauseMenu)
+			_player.SetProcessUnhandledInput(true);
+	}
+
+	// Abandoning a run in progress always confirms first (unlike New Run
+	// from the startup screen, which only confirms when the existing save
+	// is itself unfinished) - the pause menu is only reachable while a run
+	// is already in progress, so there is always something to lose here.
+	private void OnPauseRestartPressed()
+	{
+		_pauseMenuOverlay.Visible = false;
+		_overwriteConfirmationReason = OverwriteConfirmationReason.RestartFromPauseMenu;
+		_confirmOverwriteOverlay.Visible = true;
+		_confirmOverwriteCancelButton.GrabFocus();
+	}
+
+	private void OnQuitPressed()
+	{
+		GetTree().Quit();
 	}
 
 	// Decides whether a resumable save exists at all (per the decision
@@ -929,17 +1128,38 @@ public partial class Main : Node2D
 
 	private void OnNewRunPressed()
 	{
+		_overwriteConfirmationReason = OverwriteConfirmationReason.NewRunFromStartup;
 		StartNewRun(confirmed: false);
 	}
 
 	private void OnConfirmOverwritePressed()
 	{
+		if (_overwriteConfirmationReason == OverwriteConfirmationReason.RestartFromPauseMenu)
+		{
+			// A live run is being torn down via a full scene reload, unlike
+			// StartNewRun (already at the startup screen, nothing to tear
+			// down) - the reload's own _Ready would otherwise re-detect this
+			// still-in-progress run's own save as resumable and show
+			// Continue/New Run again for the very run just abandoned.
+			_skipStartupMenuForNewRun = true;
+			GetTree().ReloadCurrentScene();
+			return;
+		}
+
 		StartNewRun(confirmed: true);
 	}
 
 	private void OnCancelOverwritePressed()
 	{
 		_confirmOverwriteOverlay.Visible = false;
+
+		if (_overwriteConfirmationReason == OverwriteConfirmationReason.RestartFromPauseMenu)
+		{
+			_pauseMenuOverlay.Visible = true;
+			_pauseRestartButton.GrabFocus();
+			return;
+		}
+
 		_startupMenuOverlay.Visible = true;
 		_continueButton.GrabFocus();
 	}
@@ -1325,6 +1545,7 @@ public partial class Main : Node2D
 			playerWon ? Colors.LimeGreen : Colors.IndianRed
 		);
 		_endGameOverlay.Visible = true;
+		_restartButton.GrabFocus();
 
 		GD.Print(playerWon ? "Room cleared!" : "Game over!");
 	}
@@ -1407,7 +1628,7 @@ public partial class Main : Node2D
 			return;
 		}
 
-		if (_exportMenuOverlay.Visible)
+		if (_exportMenuOverlay.Visible || _pauseMenuOverlay.Visible)
 			return;
 
 		_wasPlayerInputEnabledBeforeExportMenu = _gameStarted && !_gameEnded;
