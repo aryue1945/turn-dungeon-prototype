@@ -123,6 +123,7 @@ public partial class Main : Node2D
 		CreatePauseMenu();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
+		_player.WaitRequested += OnPlayerWaitRequested;
 		_player.HealthChanged += OnPlayerHealthChanged;
 		_player.Died += OnPlayerDied;
 
@@ -1356,6 +1357,10 @@ public partial class Main : Node2D
 			case PlayerActionKind.Blocked:
 				GD.Print($"Player hit wall at {outcome.TargetCell}");
 				break;
+
+			case PlayerActionKind.Waited:
+				GD.Print("Player waits.");
+				break;
 		}
 	}
 
@@ -1475,6 +1480,28 @@ public partial class Main : Node2D
 			IsWallAt
 		);
 
+		ResolveTurn(direction, outcome);
+	}
+
+	// The explicit Wait command: consumes a turn (enemies still act
+	// afterward) without moving, attacking, or digging. Shares every other
+	// step of turn resolution with OnPlayerMoveRequested via ResolveTurn -
+	// one input here still produces exactly one completed turn, the same
+	// guarantee movement already has.
+	private void OnPlayerWaitRequested()
+	{
+		if (_gameEnded || !_gameStarted)
+			return;
+
+		ResolveTurn(Vector2.Zero, TurnResolver.ResolvePlayerWait());
+	}
+
+	// The shared remainder of turn resolution once the player's half is
+	// already decided (move/attack/dig/wait) - narrate it, remove defeated
+	// enemies, check for victory, then either stop at a terminal turn or
+	// run the enemy phase before finishing.
+	private void ResolveTurn(Vector2 direction, PlayerActionOutcome outcome)
+	{
 		ApplyPlayerActionOutcome(outcome);
 
 		RemoveDefeatedEnemies();

@@ -138,6 +138,18 @@ public sealed class TurnResolverTests
 		Assert.That(player.MoveCallCount, Is.EqualTo(0));
 	}
 
+	[Test]
+	public void ResolvePlayerWait_ReturnsWaitedWithNoTargetCellOrAttack()
+	{
+		PlayerActionOutcome outcome = TurnResolver.ResolvePlayerWait();
+
+		Assert.That(outcome.Kind, Is.EqualTo(PlayerActionKind.Waited));
+		Assert.That(outcome.TargetCell, Is.Null);
+		Assert.That(outcome.AttackName, Is.Null);
+		Assert.That(outcome.AttackDetail, Is.Null);
+		Assert.That(outcome.DoorOpened, Is.False);
+	}
+
 	// A solid-walled 5x5 room, floor everywhere inside.
 	private static DungeonMap CreateOpenRoom()
 	{
