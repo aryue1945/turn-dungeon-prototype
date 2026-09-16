@@ -43,6 +43,7 @@ public partial class Main : Node2D
 	private Texture2D _doorTexture;
 	private DungeonMap _dungeonMap;
 	private DungeonRenderer _dungeonRenderer;
+	private GameState _gameState;
 	private int _dungeonSeed;
 	private int _currentPlayerZoneId = -1;
 	private Camera2D _camera;
@@ -86,6 +87,7 @@ public partial class Main : Node2D
 
 		CreateDungeon();
 		PlacePlayerInStartRoom();
+		_gameState = new GameState(_dungeonMap, _player.State);
 		CreateFollowingCamera();
 		SpawnEnemies();
 		CreateGameUi();
@@ -335,6 +337,7 @@ public partial class Main : Node2D
 
 			occupiedCells.Add(enemyCell);
 			_enemies.Add(enemy);
+			_gameState.AddEnemy(enemy.State);
 			AddChild(enemy);
 		}
 	}
@@ -589,6 +592,8 @@ public partial class Main : Node2D
 			if (!IsEnemyActive(_enemies[i]))
 				_enemies.RemoveAt(i);
 		}
+
+		_gameState.RemoveDefeatedEnemies();
 	}
 
 	private HashSet<GridPosition> GetOccupiedEnemyPositions(Enemy movingEnemy)
@@ -716,12 +721,16 @@ public partial class Main : Node2D
 		CheckForVictory();
 
 		if (_gameEnded)
+		{
+			_gameState.CompleteTurn();
 			return;
+		}
 
 		TakeEnemyTurns();
 
 		RemoveDefeatedEnemies();
 		CheckForVictory();
+		_gameState.CompleteTurn();
 	}
 
 	private void CheckForVictory()
@@ -736,6 +745,7 @@ public partial class Main : Node2D
 			return;
 
 		_gameEnded = true;
+		_gameState.SetStatus(playerWon ? RunStatus.Won : RunStatus.Lost);
 		_player.SetProcessUnhandledInput(false);
 
 		_statusLabel.Text = playerWon ? "YOU WIN!" : "GAME OVER";
