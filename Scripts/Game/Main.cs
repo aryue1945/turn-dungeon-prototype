@@ -257,7 +257,21 @@ public partial class Main : Node2D
 
 	private void OnPlayerEnteredZone(int zoneId)
 	{
+		// GameSnapshot/CellSnapshot only ever captured each cell's ZoneId,
+		// not the DungeonZone list itself (room bounds, type, template) -
+		// GameSnapshotRestore.RestoreMap has no zone metadata to rebuild
+		// Zones from, so GetZone returns null for a Continue'd run even
+		// though the zoneId itself is still correct. This narration is
+		// cosmetic only (nothing gameplay-relevant reads Zones after
+		// setup), so fall back to the bare id instead of crashing.
 		DungeonZone zone = _dungeonMap.GetZone(zoneId);
+
+		if (zone == null)
+		{
+			GD.Print($"Player entered zone {zoneId}.");
+			return;
+		}
+
 		GD.Print(
 			$"Player entered zone {zoneId}: {zone.Type}, " +
 			$"template {zone.TemplateName}."
