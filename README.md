@@ -43,7 +43,7 @@ The source contains 56 NUnit test methods across generation, weapon attacks, dig
 
 ## Architecture and next work
 
-Terrain authority is already unified, and NEXT_STEPS milestone 1 (authoritative actor state and grid combat) is done: both the player's and enemies' unique instance id, definition id, grid position, health, facing, equipment ids and attack reference now live in an authoritative `ActorState` (including the slow chaser's prepared-move flag, previously a private field), and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. A `GameState` aggregate (map, player/enemy state references, turn number, run status) exists and Main keeps it in sync, though Main still makes every decision itself - nothing reads from GameState yet. Milestone 2 (complete-turn execution) has its first slice: `TurnResolver.ResolvePlayerAction` now owns the player's attack/dig/move rules, tested without a Godot node via a small interface. Enemy turns are still Main's/Enemy's job. Next: extract enemy turns the same way, and make TurnResolver actually read/drive GameState instead of Main passing it raw pieces.
+Terrain authority is already unified, and NEXT_STEPS milestone 1 (authoritative actor state and grid combat) is done: both the player's and enemies' unique instance id, definition id, grid position, health, facing, equipment ids and attack reference now live in an authoritative `ActorState` (including the slow chaser's prepared-move flag, previously a private field), and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. A `GameState` aggregate (map, player/enemy state references, turn number, run status) exists and Main keeps it in sync, though Main still makes every decision itself - nothing reads from GameState yet. Milestone 2 (complete-turn execution) is in progress: `TurnResolver.ResolvePlayerAction` fully owns the player's attack/dig/move rules and is tested without a Godot node; `TurnResolver.ResolveEnemyAction` wraps one enemy's turn plus door-opening, but movement behaviors still decide everything through callbacks rather than returning a result, so it can't yet report what an enemy actually did. Next: make movement behaviors return an explicit outcome, then move the enemy-phase loop and victory/death checks into TurnResolver so it - not Main - reads/drives GameState.
 
 Approved direction to implement after that foundation:
 
@@ -64,7 +64,7 @@ Save/resume and debug history are **not implemented**. Debug history is not a pr
 
 ## Current limitations
 
-- `GameState` exists and is kept in sync, but nothing reads from it yet. `TurnResolver` only handles the player's action so far - enemy turns, input rejection and completion boundaries are still Main's own code.
+- `GameState` exists and is kept in sync, but nothing reads from it yet. `TurnResolver` resolves the player's action fully and wraps enemy turns thinly (movement behaviors still don't return outcomes); the enemy loop, input rejection and completion boundaries are still Main's own code.
 - A map seed does not reproduce enemy placement or guarantee the same mod roster/order.
 - No run save/load, debug-history export, persistent progression, or difficulty modifiers.
 - Closed-door blocking, floor transitions, wait, and obstacle-aware navigation remain open.
