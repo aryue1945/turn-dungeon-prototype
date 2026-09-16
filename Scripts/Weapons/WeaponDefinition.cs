@@ -63,4 +63,24 @@ public static class WeaponDefinitions
 			maxTargets: 1
 		)
 	);
+
+	public static readonly System.Collections.Generic.IReadOnlyList<WeaponDefinition> All = new[]
+	{
+		BasicSword,
+		LongSword
+	};
+
+	// Resolves a saved WeaponId back into its definition for milestone-4
+	// Continue - null (not thrown) when the id is unknown, since the caller
+	// needs to report a useful error rather than crash on a stale/modded id.
+	public static WeaponDefinition FindById(string id)
+	{
+		foreach (WeaponDefinition weapon in All)
+		{
+			if (weapon.Id == id)
+				return weapon;
+		}
+
+		return null;
+	}
 }

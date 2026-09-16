@@ -11,8 +11,10 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 
 	// Authoritative grid position and health. Godot's own pixel Position
 	// (inherited from CharacterBody2D) is kept in sync from this and used
-	// only for rendering/camera - see PlaceAt and Move.
-	private readonly ActorState _state =
+	// only for rendering/camera - see PlaceAt, Move and RestoreFrom. Not
+	// readonly: RestoreFrom (milestone-4 Continue) swaps in a state rebuilt
+	// from a save instead of this fresh one.
+	private ActorState _state =
 		new(new GridPosition(0, 0), StartingHealth, PlayerDefinitionId);
 
 	[Signal]
@@ -109,6 +111,25 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 	{
 		Position += direction * TileSize;
 		_state.MoveBy((int)direction.X, (int)direction.Y);
+	}
+
+	// Adopts a state rebuilt by GameSnapshotRestore.RestoreActor for
+	// milestone-4 Continue, in place of the fresh ActorState/weapon/tool
+	// PlaceAt/EquipWeapon would otherwise set up. The caller must already
+	// have called Attack.Equip(weapon.PrimaryAttack) before restoring state
+	// through GameSnapshotRestore.RestoreActor, so state.Attack (this same
+	// Attack instance) reflects the saved preparation, not a cancelled one.
+	public void RestoreFrom(
+		ActorState state,
+		WeaponDefinition weapon,
+		DiggingToolDefinition diggingTool,
+		Vector2 pixelPosition)
+	{
+		_state = state;
+		Weapon = weapon;
+		DiggingTool = diggingTool;
+		Position = pixelPosition;
+		SetFacingDirection(state.Facing);
 	}
 
 	private void SetFacingDirection(Vector2 direction)

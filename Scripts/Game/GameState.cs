@@ -57,6 +57,15 @@ public sealed class GameState
 		TurnNumber++;
 	}
 
+	// Sets TurnNumber directly, for milestone-4 Continue - unlike
+	// CompleteTurn, this does not increment from wherever the counter
+	// currently is, since a restored run resumes at a specific saved turn
+	// rather than advancing one turn at a time from zero.
+	public void RestoreTurnNumber(int turnNumber)
+	{
+		TurnNumber = turnNumber;
+	}
+
 	public void SetStatus(RunStatus status)
 	{
 		Status = status;

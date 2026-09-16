@@ -84,6 +84,32 @@ public sealed class RunSaveSerializerTests
 	}
 
 	[Test]
+	public void IsComplete_IsDerivedFromSnapshotStatusNotASeparateFlag()
+	{
+		DungeonMap map = Generate(seed: 1);
+		GameState state = new(map, CreatePlayerState());
+
+		RunSaveEnvelope inProgress = RunSaveEnvelope.Capture(state);
+		Assert.That(inProgress.IsComplete, Is.False);
+
+		state.SetStatus(RunStatus.Won);
+		RunSaveEnvelope won = RunSaveEnvelope.Capture(state);
+		Assert.That(won.IsComplete, Is.True);
+	}
+
+	[Test]
+	public void RoundTrip_PreservesSavedAtUtc()
+	{
+		DungeonMap map = Generate(seed: 1);
+		GameState state = new(map, CreatePlayerState());
+		RunSaveEnvelope envelope = RunSaveEnvelope.Capture(state);
+
+		RunSaveLoadOutcome outcome = RunSaveSerializer.FromJson(RunSaveSerializer.ToJson(envelope));
+
+		Assert.That(outcome.Envelope.SavedAtUtc, Is.EqualTo(envelope.SavedAtUtc));
+	}
+
+	[Test]
 	public void FromJson_RejectsAnUnsupportedSchemaVersion()
 	{
 		DungeonMap map = Generate(seed: 1);
