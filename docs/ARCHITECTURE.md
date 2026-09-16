@@ -6,8 +6,9 @@ Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (
 
 | Source | Responsibility and remaining coupling |
 | --- | --- |
-| `Scripts/Game/Main.cs` | Builds map, actors, mod spawn pool, UI and camera; executes player/enemy turns; handles digging, door refresh, victory and restart. Still owns and drives all control flow; keeps a `GameState` in sync (AddEnemy/RemoveDefeatedEnemies/CompleteTurn/SetStatus) but does not yet read from it to decide anything. |
+| `Scripts/Game/Main.cs` | Builds map, actors, mod spawn pool, UI and camera; delegates the player's half of a turn to `TurnResolver` and narrates/renders the result; still runs enemy turns, digging/door refresh side effects and victory/restart directly. Keeps a `GameState` in sync (AddEnemy/RemoveDefeatedEnemies/CompleteTurn/SetStatus) but does not yet read from it to decide anything. |
 | `Scripts/Game/GameState.cs` | Engine-independent aggregate: `Map` (DungeonMap), `Player`/`Enemies` (ActorState references), `TurnNumber`, `Status` (RunStatus). A thin container Main updates each turn - not a rules engine, and nothing reads it yet. See target shape below. |
+| `Scripts/Game/TurnResolver.cs` | First milestone-2 slice: `ResolvePlayerAction` resolves attack -> dig -> move/bump for one player input against `IPlayerTurnActor` (Player already satisfies it) and returns a typed `PlayerActionOutcome`. It performs every gameplay mutation itself (damage, terrain, movement, door state); Main only narrates and refreshes changed cells. Enemy turns are not extracted yet. |
 | `Scripts/Actors/Player.cs` | Godot input, weapon/tool state, facing indicator display; owns an `ActorState`. `ActorState` is authoritative for GridPosition/health/facing (pixel Position and indicator rotation are derived from it via `PlaceAt`/`Move`/`SetFacingDirection`); Player stays authoritative for which `WeaponDefinition`/`DiggingToolDefinition`/`AttackState` are equipped, and pushes their ids/reference into `ActorState` (`EquipWeapon`/`EquipDiggingTool`/`_Ready`) so a reader does not need the node. |
 | `Scripts/Actors/ActorState.cs` | Engine-independent unique instance id (`Guid`), definition id (`string`, required), GridPosition, health, facing (`Vector2`), one enemy-behavior flag (`HasPreparedMove`, formerly private on `ChasePlayerBehavior`), equipment ids (`WeaponId`/`ToolId`, Player-only for now) and an `Attack` reference (the same `AttackState` instance the owning Player/Enemy mutates, not a copy). Player and Enemy both treat an instance as authoritative. |
 | `Scripts/Actors/Enemy.cs` | Holds monster definition and behavior instance; owns an `ActorState` (GridPosition, health, facing, prepared-move flag, Attack reference) via `Configure`. Pixel movement sync, labels, facing indicator and QueueFree lifecycle remain node-based; attack execution itself already runs through `AttackResolver` in grid coordinates. |
@@ -22,7 +23,7 @@ Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (
 
 Terrain queries are already unified: Main injects its DungeonMap-backed IsWallAt delegate into Enemy.Configure. Do not reintroduce scene-wall scanning.
 
-Digging, door visual removal, changed-cell rendering, and keyboard weapon selection are implemented. Player and Enemy both keep a unique instance id, definition id, GridPosition, health, facing, equipment ids/Attack reference and (for Enemy) the chaser's prepared-move flag in an `ActorState`; combat and occupancy (`ICombatant.GridPosition`, `AttackResolver`, Main's `IsWallAt`/`OpenDoorAt`/enemy-occupancy sets/spawn-cell selection) all work in `GridPosition` now, not pixel `Vector2` - only node `Position`/indicator rotation (rendering/camera) stay pixel-based, synced from each actor's `ActorState`. `GameState` exists and mirrors the run (map, player/enemy ActorState references, turn number, status) accurately, but Main still owns every decision - GameState is not yet a dependency of any rule. NEXT_STEPS milestone 1 is now complete. The remaining core problem is that turn execution and command dispatch live entirely in Main.cs's event handlers rather than a TurnResolver that reads/writes GameState, not missing map infrastructure.
+Digging, door visual removal, changed-cell rendering, and keyboard weapon selection are implemented. Player and Enemy both keep a unique instance id, definition id, GridPosition, health, facing, equipment ids/Attack reference and (for Enemy) the chaser's prepared-move flag in an `ActorState`; combat and occupancy (`ICombatant.GridPosition`, `AttackResolver`, Main's `IsWallAt`/`OpenDoorAt`/enemy-occupancy sets/spawn-cell selection) all work in `GridPosition` now, not pixel `Vector2` - only node `Position`/indicator rotation (rendering/camera) stay pixel-based, synced from each actor's `ActorState`. `GameState` exists and mirrors the run (map, player/enemy ActorState references, turn number, status) accurately, but Main still owns every decision - GameState is not yet a dependency of any rule. NEXT_STEPS milestone 1 is complete; milestone 2 has its first slice: `TurnResolver.ResolvePlayerAction` now owns the player's attack/dig/move rules and returns a typed outcome, tested without any Godot node via `IPlayerTurnActor`. Enemy turns, victory/death checks and `GameState`-as-input are still Main's job, not TurnResolver's.
 
 ## State authority and target responsibilities
 
@@ -32,7 +33,7 @@ The live source of truth will be ordinary in-memory C# objects. JSON is the stor
 | --- | --- |
 | GameState | Map, actors, stable execution order, turn number, run status, and run configuration/seed references. Implemented now (`Map`, `Player`/`Enemies` as ActorState references, `TurnNumber`, `Status`); run configuration/seed references beyond `Map.Seed` are not included, and nothing consumes it as an input yet - that's TurnResolver's job. |
 | ActorState | Unique instance ID, definition ID, integer position, health, facing, equipment, attack preparation and enemy behavior state. Implemented: instance id, definition id, GridPosition, health, facing, HasPreparedMove, WeaponId/ToolId (Player-only), and an Attack reference (the actor's live AttackState, not a copy). |
-| TurnResolver | Validate commands and execute complete turns; return structured outcomes and changed actor/cell IDs. |
+| TurnResolver | Validate commands and execute complete turns; return structured outcomes and changed actor/cell IDs. First slice implemented: `ResolvePlayerAction` (attack -> dig -> move/bump for one player input, returns `PlayerActionOutcome`). Enemy turns, command validation/rejection and GameState-as-input are not there yet. |
 | Existing movement behaviors | Retain behavior IDs/factories, migrate decisions to state and explicit outcomes. Remove Player/node/visual dependencies. Do not add a competing EnemyBrain registry. |
 | AttackResolver / DigResolver | Apply combat and digging rules against authoritative state. |
 | DungeonMap / DungeonGenerator | Keep current map and generation responsibilities. |
@@ -48,9 +49,9 @@ These are responsibilities, not a requirement for an interface or separate proje
 
 Preserve the current sequence during extraction:
 
-1. Reject gameplay input before selection or after game end.
-2. Resolve a pending/detected attack; otherwise try adjacent digging; otherwise move or bump.
-3. On player movement, update zone membership and open any door at the destination.
+1. Reject gameplay input before selection or after game end. (Still Main's own guard in `OnPlayerMoveRequested`, not yet moved into TurnResolver.)
+2. Resolve a pending/detected attack; otherwise try adjacent digging; otherwise move or bump. (Implemented in `TurnResolver.ResolvePlayerAction`.)
+3. On player movement, update zone membership and open any door at the destination. (Door-opening is inside `ResolvePlayerAction` now, since it's a DungeonMap mutation; zone membership stays in Main as a presentation-adjacent side effect of the returned `Moved` outcome.)
 4. Remove defeated enemies and check global victory. Victory can end the turn before enemies act.
 5. Execute surviving enemies in stable order, each reading the updated state. Open the door at each enemy's resulting position. Stop on player death.
 6. Finalize removals and victory checks.
@@ -100,13 +101,13 @@ The map seed currently reproduces generation only. Main's random spawn positions
 
 ## Migration order
 
-Completed: shared map blocking, digging/tool separation, cell refresh, door opening graphics, keyboard weapon menu, monster definitions and reusable behaviors, Player's and Enemy's GridPosition/health extracted into ActorState, `ICombatant`/`AttackResolver`/Main's occupancy and wall queries converted from pixel `Vector2` to `GridPosition`, facing and the chaser's prepared-move flag moved into ActorState, ActorState instance/definition ids, stable weapon/tool ids, GameState introduced and kept in sync by Main, equipment ids and AttackState referenced from ActorState. NEXT_STEPS milestone 1 is done.
+Completed: shared map blocking, digging/tool separation, cell refresh, door opening graphics, keyboard weapon menu, monster definitions and reusable behaviors, Player's and Enemy's GridPosition/health extracted into ActorState, `ICombatant`/`AttackResolver`/Main's occupancy and wall queries converted from pixel `Vector2` to `GridPosition`, facing and the chaser's prepared-move flag moved into ActorState, ActorState instance/definition ids, stable weapon/tool ids, GameState introduced and kept in sync by Main, equipment ids and AttackState referenced from ActorState (NEXT_STEPS milestone 1 done), TurnResolver.ResolvePlayerAction extracted (milestone 2 first slice).
 
-Next: extract complete turns into a TurnResolver that reads/writes GameState using the existing behavior registry; capture snapshots and 10-turn history; implement versioned run save/resume. Keep gameplay rules unchanged throughout. See [Next steps](NEXT_STEPS.md).
+Next: extract enemy turns into TurnResolver using the existing behavior registry, so it - not Main - reads/writes GameState; capture snapshots and 10-turn history; implement versioned run save/resume. Keep gameplay rules unchanged throughout. See [Next steps](NEXT_STEPS.md).
 
 ## Verification and deferred work
 
-There are 50 test methods: generator/terrain 8, weapon 6, digging 4, dynamic terrain 4, mod loader 8, ActorState 14, GameState 6. Source inspection only in this documentation review; no test execution claim.
+There are 56 test methods: generator/terrain 8, weapon 6, digging 4, dynamic terrain 4, mod loader 8, ActorState 14, GameState 6, TurnResolver 6. Source inspection only in this documentation review; no test execution claim.
 
 Highest-value additions: full turns/death/order, chaser intent, grid/visual independence, snapshot copy isolation, history rollover, save/load next-turn equivalence, terrain restoration, mod compatibility and failed-save backup recovery. Use small Godot checks for focus, door art and loading views.
 

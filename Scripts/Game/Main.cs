@@ -573,6 +573,57 @@ public partial class Main : Node2D
 		return !_dungeonMap.IsWalkable(position.X, position.Y);
 	}
 
+	// Narrates a resolved player action and applies the presentation-only
+	// side effects the rule itself doesn't own (printing, refreshing
+	// changed cells, zone tracking). TurnResolver already made every
+	// gameplay mutation (damage, terrain, movement, door state).
+	private void ApplyPlayerActionOutcome(PlayerActionOutcome outcome)
+	{
+		switch (outcome.Kind)
+		{
+			case PlayerActionKind.Attacked:
+				GD.Print($"Player used {outcome.AttackName}.");
+				break;
+
+			case PlayerActionKind.Preparing:
+				GD.Print($"Player prepares {outcome.AttackName}.");
+				break;
+
+			case PlayerActionKind.TerrainDestroyed:
+				GD.Print($"Player destroyed terrain at {outcome.TargetCell}.");
+				_dungeonRenderer.RefreshCell(
+					_dungeonMap,
+					outcome.TargetCell.X,
+					outcome.TargetCell.Y
+				);
+				break;
+
+			case PlayerActionKind.TerrainDug:
+				GD.Print(
+					$"Player dug terrain at {outcome.TargetCell}; " +
+						$"durability {outcome.RemainingDurability}."
+				);
+				break;
+
+			case PlayerActionKind.Moved:
+				UpdatePlayerZone();
+
+				if (outcome.DoorOpened)
+				{
+					_dungeonRenderer.RefreshCell(
+						_dungeonMap,
+						outcome.TargetCell.X,
+						outcome.TargetCell.Y
+					);
+				}
+				break;
+
+			case PlayerActionKind.Blocked:
+				GD.Print($"Player hit wall at {outcome.TargetCell}");
+				break;
+		}
+	}
+
 	private void OpenDoorAt(GridPosition position)
 	{
 		if (_dungeonMap.OpenDoor(position.X, position.Y))
@@ -653,69 +704,15 @@ public partial class Main : Node2D
 		if (_gameEnded || !_gameStarted)
 			return;
 
-		GridPosition targetCell = new(
-			_player.GridPosition.X + (int)direction.X,
-			_player.GridPosition.Y + (int)direction.Y
+		PlayerActionOutcome outcome = TurnResolver.ResolvePlayerAction(
+			_player,
+			direction,
+			GetCombatants(),
+			_dungeonMap,
+			IsWallAt
 		);
 
-		AttackTurnResult attackResult =
-			AttackResolver.TryAttack(
-				_player,
-				direction,
-				_player.Attack,
-				GetCombatants(),
-				IsWallAt
-			);
-
-		if (attackResult == AttackTurnResult.NoAttack)
-		{
-			DigResult digResult = DigResolver.TryDig(
-				_dungeonMap,
-				targetCell,
-				_player.DiggingTool
-			);
-
-			if (digResult != DigResult.NoTarget)
-			{
-				DungeonCell cell = _dungeonMap.GetCell(
-					targetCell.X,
-					targetCell.Y
-				);
-				GD.Print(
-					digResult == DigResult.Destroyed
-						? $"Player destroyed terrain at {targetCell}."
-						: $"Player dug terrain at {targetCell}; " +
-							$"durability {cell.Durability}."
-				);
-
-				if (digResult == DigResult.Destroyed)
-				{
-					_dungeonRenderer.RefreshCell(
-						_dungeonMap,
-						targetCell.X,
-						targetCell.Y
-					);
-				}
-			}
-			else if (!IsWallAt(targetCell))
-			{
-				_player.Move(direction);
-				UpdatePlayerZone();
-				OpenDoorAt(_player.GridPosition);
-			}
-			else
-				GD.Print($"Player hit wall at {targetCell}");
-		}
-		else
-		{
-			string actionText = attackResult == AttackTurnResult.Preparing
-				? "prepares"
-				: "used";
-
-			GD.Print(
-				$"Player {actionText} {_player.Attack.Definition.Name}."
-			);
-		}
+		ApplyPlayerActionOutcome(outcome);
 
 		RemoveDefeatedEnemies();
 		CheckForVictory();

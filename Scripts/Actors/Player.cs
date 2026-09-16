@@ -1,7 +1,7 @@
 using Godot;
 using System;
 
-public partial class Player : CharacterBody2D, ICombatant
+public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 {
 	private const float TileSize = 32.0f;
 	private const int StartingHealth = 3;

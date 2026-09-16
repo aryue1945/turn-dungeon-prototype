@@ -12,7 +12,7 @@ This roadmap separates completed foundation work from planned changes. Save/resu
 - Door IsOpen state and visual removal for player/enemy occupancy; doors remain walkable before opening.
 - Keyboard weapon selection with initial focus, arrow neighbors, confirm and 1/2 shortcuts.
 - Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods.
-- 50 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, and GameState.
+- 56 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, GameState, and TurnResolver.
 - Milestone 1 (ActorState/GameState/grid combat) is done - see below.
 
 Tree/growing walls remain disabled in generation and the turn loop. Do not re-enable them incidentally. Full turns, save/load and debug export have no implementation or tests yet.
@@ -29,9 +29,13 @@ Acceptance: rules no longer read node positions; views derive positions from sta
 
 Risks (addressed): coordinate rotation, duplicate actor occupancy, lost private AI state, shared definition mutation.
 
-## 2. Complete-turn execution
+## 2. Complete-turn execution (in progress)
 
 Extract TurnResolver and adapt existing movement behaviors to state-based decisions/outcomes. Keep attack -> dig -> move/bump priority, sequential enemy order, door-on-occupancy behavior, and early victory/death semantics.
+
+Done: `Scripts/Game/TurnResolver.cs` - `ResolvePlayerAction` resolves the player's half of a turn (attack -> dig -> move/bump) and returns a typed `PlayerActionOutcome` (Attacked/Preparing/TerrainDug/TerrainDestroyed/Moved/Blocked). It performs every gameplay mutation itself (damage via AttackResolver, terrain via DigResolver, movement, door-opening); `Main.ApplyPlayerActionOutcome` only narrates and refreshes changed cells. Tested via a small `IPlayerTurnActor` interface (Player already satisfies it - no Godot node needed in tests) and a hand-built `DungeonMap`, not the generator.
+
+Remaining: extract enemy turns (currently `Main.TakeEnemyTurns`/`Enemy.TakeTurn` unchanged); the top-of-method gameplay-input guard, victory/death checks, and completion boundary are still Main's own code, not TurnResolver's; TurnResolver does not read or write GameState yet - Main still passes it the raw pieces (player, combatants, map) directly.
 
 Acceptance: plain NUnit tests cover complete turns, dead enemies never act, later enemies stop after player death, and each consumed command has exactly one completion boundary even on terminal turns.
 
