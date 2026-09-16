@@ -113,6 +113,17 @@ public sealed class GameStateTests
 		Assert.That(state.Status, Is.EqualTo(RunStatus.Won));
 	}
 
+	[Test]
+	public void RestoreTurnNumber_SetsTurnNumberDirectlyRatherThanIncrementing()
+	{
+		GameState state = new(Generate(seed: 1), CreatePlayerState());
+		state.CompleteTurn();
+
+		state.RestoreTurnNumber(24);
+
+		Assert.That(state.TurnNumber, Is.EqualTo(24));
+	}
+
 	private static DungeonMap Generate(int seed)
 	{
 		return new DungeonGenerator().Generate(

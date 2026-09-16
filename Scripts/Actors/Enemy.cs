@@ -86,6 +86,22 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		}
 	}
 
+	// Adopts a state rebuilt by GameSnapshotRestore.RestoreActor for
+	// milestone-4 Continue, in place of the fresh full-health ActorState
+	// Configure sets up. Called right after Configure/AddChild, reusing the
+	// same Attack instance Configure already created from the definition
+	// (an enemy's attack is fixed by its MonsterDefinition, so - unlike
+	// Player - there is no separate Equip step).
+	public void RestoreFrom(ActorSnapshot snapshot, Vector2 pixelPosition)
+	{
+		_state = GameSnapshotRestore.RestoreActor(snapshot, Attack);
+		Position = pixelPosition;
+		UpdateFacingIndicatorRotation();
+		_facingIndicator.Visible =
+			_movementBehavior.ShowsFacingIndicatorInitially || _state.HasPreparedMove;
+		UpdateHealthDisplay();
+	}
+
 	public EnemyActionResult TakeTurn(
 		Player player,
 		HashSet<GridPosition> occupiedEnemyPositions,

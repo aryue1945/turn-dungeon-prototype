@@ -30,9 +30,16 @@ public partial class Main : Node2D
 	private Control _weaponSelectionPanel;
 	private Control _exportMenuOverlay;
 	private Button _exportLast5Button;
+	private Button _basicSwordButton;
+	private Control _startupMenuOverlay;
+	private Button _continueButton;
+	private Label _startupErrorLabel;
+	private Control _confirmOverwriteOverlay;
 	private bool _gameStarted;
 	private bool _gameEnded;
 	private bool _wasPlayerInputEnabledBeforeExportMenu;
+	private SaveFileLoadOutcome _pendingLoadOutcome;
+	private bool _hasUnfinishedResumableRun;
 
 	private PackedScene _enemyScene;
 	private PackedScene _wallScene;
@@ -92,25 +99,24 @@ public partial class Main : Node2D
 		_random.Randomize();
 		_spawnPool = BuildSpawnPool();
 
-		CreateDungeon();
-		PlacePlayerInStartRoom();
-		_gameState = new GameState(_dungeonMap, _player.State);
-		CreateFollowingCamera();
-		SpawnEnemies();
 		CreateGameUi();
 		CreateWeaponSelection();
+		CreateStartupMenu();
+		CreateOverwriteConfirmation();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
 		_player.HealthChanged += OnPlayerHealthChanged;
 		_player.Died += OnPlayerDied;
 
-		GD.Print($"Player health: {_player.Health}");
-		GD.Print($"Spawned {_enemies.Count} enemies.");
+		_player.SetProcessUnhandledInput(false);
+
+		_pendingLoadOutcome = RunSaveFileService.Load(OS.GetUserDataDir());
+		ShowStartupMenu();
 	}
 
 	public override void _UnhandledInput(InputEvent @event)
 	{
-		if (!_gameStarted &&
+		if (_weaponSelectionPanel.Visible &&
 			@event is InputEventKey weaponKey &&
 			weaponKey.Pressed &&
 			!weaponKey.Echo)
@@ -190,6 +196,20 @@ public partial class Main : Node2D
 		_dungeonMap = new DungeonGenerator().Generate(request);
 		GD.Print(_dungeonMap.ToDebugString());
 
+		BuildAndRenderDungeon();
+
+		GD.Print(
+			$"Dungeon seed: {_dungeonSeed}; " +
+			$"zones: {_dungeonMap.Zones.Count}."
+		);
+	}
+
+	// Shared between fresh generation (CreateDungeon) and milestone-4
+	// Continue (RestoreRun) - both already have a populated _dungeonMap by
+	// the time this runs, from generation or GameSnapshotRestore.RestoreMap
+	// respectively.
+	private void BuildAndRenderDungeon()
+	{
 		_dungeonRenderer = new(
 			this,
 			_wallScene,
@@ -206,11 +226,6 @@ public partial class Main : Node2D
 			TileSize
 		);
 		_dungeonRenderer.Render(_dungeonMap);
-
-		GD.Print(
-			$"Dungeon seed: {_dungeonSeed}; " +
-			$"zones: {_dungeonMap.Zones.Count}."
-		);
 	}
 
 	private void PlacePlayerInStartRoom()
@@ -277,11 +292,17 @@ public partial class Main : Node2D
 
 	private void AdjustCameraZoom(float amount)
 	{
+		if (_camera == null)
+			return;
+
 		SetCameraZoom(_camera.Zoom.X + amount);
 	}
 
 	private void SetCameraZoom(float zoom)
 	{
+		if (_camera == null)
+			return;
+
 		float clampedZoom = Mathf.Clamp(
 			zoom,
 			MinimumCameraZoom,
@@ -597,6 +618,7 @@ public partial class Main : Node2D
 		AddChild(selectionLayer);
 
 		Control selectionRoot = CreateFullRectRoot(selectionLayer);
+		selectionRoot.Visible = false;
 
 		ColorRect backdrop = new()
 		{
@@ -647,6 +669,7 @@ public partial class Main : Node2D
 		};
 		basicSwordButton.Pressed += OnBasicSwordSelected;
 		selectionBox.AddChild(basicSwordButton);
+		_basicSwordButton = basicSwordButton;
 
 		Button longSwordButton = new()
 		{
@@ -672,9 +695,366 @@ public partial class Main : Node2D
 			longSwordButton.GetPathTo(basicSwordButton);
 		longSwordButton.FocusNeighborBottom =
 			longSwordButton.GetPathTo(basicSwordButton);
+	}
 
-		_player.SetProcessUnhandledInput(false);
-		basicSwordButton.GrabFocus();
+	private void ShowWeaponSelection()
+	{
+		_weaponSelectionPanel.Visible = true;
+		_basicSwordButton.GrabFocus();
+	}
+
+	// Shown at boot instead of jumping straight into weapon selection, per
+	// the milestone-4 decision table: "Show Continue and New Run when a
+	// resumable save exists." Player input stays disabled (set in _Ready)
+	// until whichever of Continue/New Run actually starts the game.
+	private void CreateStartupMenu()
+	{
+		CanvasLayer startupLayer = new()
+		{
+			Layer = 10
+		};
+		AddChild(startupLayer);
+
+		Control startupRoot = CreateFullRectRoot(startupLayer);
+		startupRoot.Visible = false;
+		_startupMenuOverlay = startupRoot;
+
+		ColorRect backdrop = new()
+		{
+			Color = new Color(0, 0, 0, 0.55f)
+		};
+		startupRoot.AddChild(backdrop);
+		backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		CenterContainer startupCenter = new();
+		startupRoot.AddChild(startupCenter);
+		startupCenter.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		PanelContainer startupPanel = new()
+		{
+			CustomMinimumSize = new Vector2(280, 220)
+		};
+		startupCenter.AddChild(startupPanel);
+
+		MarginContainer startupMargin = new();
+		startupMargin.AddThemeConstantOverride("margin_left", 24);
+		startupMargin.AddThemeConstantOverride("margin_top", 20);
+		startupMargin.AddThemeConstantOverride("margin_right", 24);
+		startupMargin.AddThemeConstantOverride("margin_bottom", 20);
+		startupPanel.AddChild(startupMargin);
+
+		VBoxContainer startupBox = new();
+		startupBox.AddThemeConstantOverride("separation", 12);
+		startupMargin.AddChild(startupBox);
+
+		Label titleLabel = new()
+		{
+			CustomMinimumSize = new Vector2(232, 32),
+			Text = "Turn Dungeon",
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		titleLabel.AddThemeFontSizeOverride("font_size", 22);
+		startupBox.AddChild(titleLabel);
+
+		_startupErrorLabel = new Label
+		{
+			CustomMinimumSize = new Vector2(232, 40),
+			Text = "",
+			Visible = false,
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		_startupErrorLabel.AddThemeFontSizeOverride("font_size", 13);
+		_startupErrorLabel.AddThemeColorOverride("font_color", Colors.IndianRed);
+		startupBox.AddChild(_startupErrorLabel);
+
+		_continueButton = new Button
+		{
+			CustomMinimumSize = new Vector2(208, 44),
+			Text = "Continue"
+		};
+		_continueButton.Pressed += OnContinuePressed;
+		startupBox.AddChild(_continueButton);
+
+		Button newRunButton = new()
+		{
+			CustomMinimumSize = new Vector2(208, 44),
+			Text = "New Run"
+		};
+		newRunButton.Pressed += OnNewRunPressed;
+		startupBox.AddChild(newRunButton);
+	}
+
+	// The "confirm before replacing an existing unfinished run" step from
+	// the decision table - only ever shown when New Run is chosen while a
+	// valid, not-yet-complete save exists (_hasUnfinishedResumableRun).
+	private void CreateOverwriteConfirmation()
+	{
+		CanvasLayer confirmLayer = new()
+		{
+			Layer = 11
+		};
+		AddChild(confirmLayer);
+
+		Control confirmRoot = CreateFullRectRoot(confirmLayer);
+		confirmRoot.Visible = false;
+		_confirmOverwriteOverlay = confirmRoot;
+
+		ColorRect backdrop = new()
+		{
+			Color = new Color(0, 0, 0, 0.55f)
+		};
+		confirmRoot.AddChild(backdrop);
+		backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		CenterContainer confirmCenter = new();
+		confirmRoot.AddChild(confirmCenter);
+		confirmCenter.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		PanelContainer confirmPanel = new()
+		{
+			CustomMinimumSize = new Vector2(280, 170)
+		};
+		confirmCenter.AddChild(confirmPanel);
+
+		MarginContainer confirmMargin = new();
+		confirmMargin.AddThemeConstantOverride("margin_left", 20);
+		confirmMargin.AddThemeConstantOverride("margin_top", 16);
+		confirmMargin.AddThemeConstantOverride("margin_right", 20);
+		confirmMargin.AddThemeConstantOverride("margin_bottom", 16);
+		confirmPanel.AddChild(confirmMargin);
+
+		VBoxContainer confirmBox = new();
+		confirmBox.AddThemeConstantOverride("separation", 12);
+		confirmMargin.AddChild(confirmBox);
+
+		Label messageLabel = new()
+		{
+			CustomMinimumSize = new Vector2(232, 48),
+			Text = "This will overwrite your unfinished run. Continue?",
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		confirmBox.AddChild(messageLabel);
+
+		Button confirmButton = new()
+		{
+			CustomMinimumSize = new Vector2(208, 40),
+			Text = "Start New Run"
+		};
+		confirmButton.Pressed += OnConfirmOverwritePressed;
+		confirmBox.AddChild(confirmButton);
+
+		Button cancelButton = new()
+		{
+			CustomMinimumSize = new Vector2(208, 40),
+			Text = "Cancel"
+		};
+		cancelButton.Pressed += OnCancelOverwritePressed;
+		confirmBox.AddChild(cancelButton);
+	}
+
+	// Decides whether a resumable save exists at all (per the decision
+	// table, the startup menu only appears when one does - otherwise go
+	// straight to New Run) and whether it represents an unfinished run
+	// (gates the overwrite confirmation later).
+	private void ShowStartupMenu()
+	{
+		bool hasResumableSave =
+			_pendingLoadOutcome.Result == SaveFileLoadResult.Loaded ||
+			_pendingLoadOutcome.Result == SaveFileLoadResult.LoadedFromBackup;
+
+		_hasUnfinishedResumableRun = hasResumableSave && !_pendingLoadOutcome.Envelope.IsComplete;
+
+		if (!hasResumableSave)
+		{
+			if (_pendingLoadOutcome.Result == SaveFileLoadResult.Invalid)
+				GD.PushError($"Save file could not be loaded: {_pendingLoadOutcome.Error}");
+
+			StartNewRun(confirmed: true);
+			return;
+		}
+
+		_continueButton.Disabled = false;
+		_startupErrorLabel.Visible = _pendingLoadOutcome.Result == SaveFileLoadResult.LoadedFromBackup;
+
+		if (_startupErrorLabel.Visible)
+			_startupErrorLabel.Text = "Recovered from backup - the current save was invalid.";
+
+		_startupMenuOverlay.Visible = true;
+		_continueButton.GrabFocus();
+	}
+
+	private void OnContinuePressed()
+	{
+		RunSaveEnvelope envelope = _pendingLoadOutcome.Envelope;
+
+		if (!TryResolveSaveDefinitions(
+			envelope,
+			out WeaponDefinition weapon,
+			out DiggingToolDefinition tool,
+			out List<MonsterDefinition> enemyDefinitions,
+			out string error))
+		{
+			_startupErrorLabel.Text = $"Cannot continue: {error}";
+			_startupErrorLabel.Visible = true;
+			_continueButton.Disabled = true;
+			return;
+		}
+
+		_startupMenuOverlay.Visible = false;
+		RestoreRun(envelope, weapon, tool, enemyDefinitions);
+	}
+
+	private void OnNewRunPressed()
+	{
+		StartNewRun(confirmed: false);
+	}
+
+	private void OnConfirmOverwritePressed()
+	{
+		StartNewRun(confirmed: true);
+	}
+
+	private void OnCancelOverwritePressed()
+	{
+		_confirmOverwriteOverlay.Visible = false;
+		_startupMenuOverlay.Visible = true;
+		_continueButton.GrabFocus();
+	}
+
+	// Resolves every saved id (WeaponId, ToolId, each enemy's DefinitionId)
+	// back into a real definition before touching any game state - Continue
+	// must not partially tear down the startup screen only to discover a
+	// missing weapon/monster mod halfway through restoring.
+	private bool TryResolveSaveDefinitions(
+		RunSaveEnvelope envelope,
+		out WeaponDefinition weapon,
+		out DiggingToolDefinition tool,
+		out List<MonsterDefinition> enemyDefinitions,
+		out string error)
+	{
+		enemyDefinitions = new List<MonsterDefinition>();
+
+		weapon = WeaponDefinitions.FindById(envelope.Snapshot.Player.WeaponId);
+
+		if (weapon == null)
+		{
+			tool = null;
+			error = $"Unknown weapon \"{envelope.Snapshot.Player.WeaponId}\".";
+			return false;
+		}
+
+		tool = DiggingToolDefinitions.FindById(envelope.Snapshot.Player.ToolId);
+
+		if (tool == null)
+		{
+			error = $"Unknown digging tool \"{envelope.Snapshot.Player.ToolId}\".";
+			return false;
+		}
+
+		foreach (ActorSnapshot enemySnapshot in envelope.Snapshot.Enemies)
+		{
+			MonsterDefinition definition = _spawnPool
+				.FirstOrDefault(candidate => candidate.Id == enemySnapshot.DefinitionId);
+
+			if (definition == null)
+			{
+				error = $"Unknown monster \"{enemySnapshot.DefinitionId}\" (mod not loaded?).";
+				return false;
+			}
+
+			enemyDefinitions.Add(definition);
+		}
+
+		error = null;
+		return true;
+	}
+
+	// New Run: confirms first if it would replace an unfinished run, then
+	// builds a fresh dungeon/player/enemies exactly like the original
+	// single-flow boot did, ending at weapon selection.
+	private void StartNewRun(bool confirmed)
+	{
+		if (!confirmed && _hasUnfinishedResumableRun)
+		{
+			_startupMenuOverlay.Visible = false;
+			_confirmOverwriteOverlay.Visible = true;
+			return;
+		}
+
+		_startupMenuOverlay.Visible = false;
+		_confirmOverwriteOverlay.Visible = false;
+
+		CreateDungeon();
+		PlacePlayerInStartRoom();
+		_gameState = new GameState(_dungeonMap, _player.State);
+		CreateFollowingCamera();
+		SpawnEnemies();
+
+		GD.Print($"Player health: {_player.Health}");
+		GD.Print($"Spawned {_enemies.Count} enemies.");
+
+		ShowWeaponSelection();
+	}
+
+	// Continue: rebuilds map/actor/enemy views from a validated save
+	// instead of fresh generation, then resumes (or, for an already-
+	// finished run, shows the same end screen a live run would have
+	// reached). Weapon selection is skipped entirely - the saved loadout is
+	// restored, not re-chosen.
+	private void RestoreRun(
+		RunSaveEnvelope envelope,
+		WeaponDefinition weapon,
+		DiggingToolDefinition tool,
+		List<MonsterDefinition> enemyDefinitions)
+	{
+		GameSnapshot snapshot = envelope.Snapshot;
+
+		_dungeonSeed = envelope.Seed;
+		_dungeonMap = GameSnapshotRestore.RestoreMap(snapshot.Grid, envelope.Seed);
+		BuildAndRenderDungeon();
+
+		_player.Attack.Equip(weapon.PrimaryAttack);
+		ActorState playerState = GameSnapshotRestore.RestoreActor(snapshot.Player, _player.Attack);
+		_player.RestoreFrom(playerState, weapon, tool, CellToPosition(snapshot.Player.Position));
+
+		_gameState = new GameState(_dungeonMap, playerState);
+		_gameState.RestoreTurnNumber(snapshot.TurnNumber);
+
+		CreateFollowingCamera();
+
+		_enemies.Clear();
+		for (int i = 0; i < snapshot.Enemies.Count; i++)
+		{
+			ActorSnapshot enemySnapshot = snapshot.Enemies[i];
+			MonsterDefinition definition = enemyDefinitions[i];
+			Vector2 pixelPosition = CellToPosition(enemySnapshot.Position);
+
+			Enemy enemy = _enemyScene.Instantiate<Enemy>();
+			enemy.Name = $"{definition.Id.Replace('.', '_')}{i + 1}";
+			enemy.Configure(definition, enemySnapshot.Position, pixelPosition, IsWallAt);
+			AddChild(enemy);
+			enemy.RestoreFrom(enemySnapshot, pixelPosition);
+
+			_enemies.Add(enemy);
+			_gameState.AddEnemy(enemy.State);
+		}
+
+		_currentPlayerZoneId = -1;
+		UpdatePlayerZone();
+
+		_weaponLabel.Text = $"Weapon: {weapon.Name}";
+		_toolLabel.Text = $"Tool: {tool.Name}";
+		_healthLabel.Text = $"HP: {_player.Health}";
+
+		_gameStarted = true;
+		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
+
+		if (snapshot.Status != RunStatus.InProgress)
+			EndGame(snapshot.Status == RunStatus.Won);
+		else
+			_player.SetProcessUnhandledInput(true);
+
+		GD.Print($"Continued run at turn {_gameState.TurnNumber}.");
 	}
 
 	private bool IsWallAt(GridPosition position)
@@ -856,8 +1236,7 @@ public partial class Main : Node2D
 
 		if (_gameEnded)
 		{
-			_gameState.CompleteTurn();
-			RecordTransition(direction, outcome, Array.Empty<EnemyActionOutcome>());
+			FinishTurn(direction, outcome, Array.Empty<EnemyActionOutcome>());
 			return;
 		}
 
@@ -865,8 +1244,22 @@ public partial class Main : Node2D
 
 		RemoveDefeatedEnemies();
 		CheckForVictory();
+		FinishTurn(direction, outcome, enemyOutcomes);
+	}
+
+	// Completes bookkeeping for one fully-resolved turn: advances GameState,
+	// records the debug-history transition, then autosaves exactly once -
+	// both call sites above reach this exactly once per turn, so a turn
+	// that ends in victory/death still only produces a single save
+	// (capturing the terminal status), never a redundant second one.
+	private void FinishTurn(
+		Vector2 direction,
+		PlayerActionOutcome outcome,
+		IReadOnlyList<EnemyActionOutcome> enemyOutcomes)
+	{
 		_gameState.CompleteTurn();
 		RecordTransition(direction, outcome, enemyOutcomes);
+		AutosaveCurrentRun();
 	}
 
 	// Appends one consumed turn to the debug ring, using the state after
@@ -948,6 +1341,26 @@ public partial class Main : Node2D
 		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
 
 		GD.Print($"Equipped {_player.Weapon.Name}.");
+
+		AutosaveCurrentRun();
+	}
+
+	// Autosave triggers per the milestone-4 decision table: after initial
+	// weapon selection/setup (here) and after every completed gameplay
+	// turn (FinishTurn) - including the turn that ends in victory/death,
+	// captured by the same single save rather than a second one. Failures
+	// are logged, not thrown - a save is a side effect of playing, not
+	// something that should crash a turn.
+	private void AutosaveCurrentRun()
+	{
+		try
+		{
+			RunSaveFileService.Save(OS.GetUserDataDir(), RunSaveEnvelope.Capture(_gameState));
+		}
+		catch (Exception exception)
+		{
+			GD.PushError($"Autosave failed: {exception.Message}");
+		}
 	}
 
 	private void OnRestartPressed()
@@ -1037,11 +1450,7 @@ public partial class Main : Node2D
 	// as it behaves in this run.
 	private static List<WeaponSummary> BuildWeaponSummaries()
 	{
-		return new List<WeaponSummary>
-		{
-			WeaponSummary.From(WeaponDefinitions.BasicSword),
-			WeaponSummary.From(WeaponDefinitions.LongSword)
-		};
+		return WeaponDefinitions.All.Select(WeaponSummary.From).ToList();
 	}
 
 	private List<MonsterSummary> BuildMonsterSummaries()

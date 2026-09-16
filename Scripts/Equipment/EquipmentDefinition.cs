@@ -34,4 +34,23 @@ public static class DiggingToolDefinitions
 		name: "Basic Shovel",
 		terrainDamage: 1
 	);
+
+	public static readonly System.Collections.Generic.IReadOnlyList<DiggingToolDefinition> All = new[]
+	{
+		BasicShovel
+	};
+
+	// Resolves a saved ToolId back into its definition for milestone-4
+	// Continue - null (not thrown) when the id is unknown, since the caller
+	// needs to report a useful error rather than crash on a stale id.
+	public static DiggingToolDefinition FindById(string id)
+	{
+		foreach (DiggingToolDefinition tool in All)
+		{
+			if (tool.Id == id)
+				return tool;
+		}
+
+		return null;
+	}
 }
