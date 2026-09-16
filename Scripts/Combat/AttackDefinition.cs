@@ -127,6 +127,20 @@ public sealed class AttackState
 		RemainingPreparationTurns = 0;
 		PreparedDirection = Vector2.Zero;
 	}
+
+	// Sets preparation state directly, for milestone-4 save/resume - unlike
+	// BeginPreparation, remainingPreparationTurns is not reset to
+	// Definition.PreparationTurns, since a restored attack may be partway
+	// through preparing.
+	public void RestorePreparation(
+		bool isPreparing,
+		int remainingPreparationTurns,
+		Vector2 preparedDirection)
+	{
+		IsPreparing = isPreparing;
+		RemainingPreparationTurns = isPreparing ? remainingPreparationTurns : 0;
+		PreparedDirection = isPreparing ? preparedDirection : Vector2.Zero;
+	}
 }
 
 public static class AttackDefinitions
