@@ -15,6 +15,7 @@ Reviewed against main `c4a5d2e99236852b8374e8c733f0ac521deeff20` on 2026-09-16 (
 - Defeat all enemies to win; player death ends the game. Restart (button or the "R" key) starts a fresh run immediately, bypassing the Continue/New Run choice for the run just finished.
 - On launch, an unfinished saved run offers Continue (resume exactly where you left off, skipping weapon selection) or New Run (confirms first if it would overwrite that unfinished run); a finished save or no save at all goes straight to New Run.
 - ESC opens a pause menu during play (Restart - confirms first since a run is in progress; Quit; Resume).
+- Debug: pressing "F" on the startup screen (Continue/New Run) launches a small hand-built fixed encounter - War Hammer, one Charging Beetle, one Spike Trap - for manually testing the interaction between them. Entirely separate from procedural generation; autosave is suppressed for it so testing it never overwrites a real save.
 - Space waits: consumes a turn without moving, attacking, or digging (enemies still act afterward).
 - Camera: mouse wheel or +/- to zoom, 0 to reset during gameplay.
 - An "Export Debug History" HUD button (or the "X" key) opens a menu to export the last 3, 5 (default) or 10 turns plus the snapshot immediately before them to a JSON file under the user data directory, including per-attack detail, derived per-cell actor ids, and compact weapon/monster summaries, for diagnosing unexpected behavior.
