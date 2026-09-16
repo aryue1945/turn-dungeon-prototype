@@ -39,11 +39,11 @@ dotnet build "New Game Project.csproj"
 dotnet test Tests/TurnDungeon.Tests.csproj
 ```
 
-The source contains 50 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading, actor state, and game state. Full-turn and Godot input/rendering integration coverage are still missing.
+The source contains 56 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading, actor state, game state, and turn resolution. Full-turn and Godot input/rendering integration coverage are still missing.
 
 ## Architecture and next work
 
-Terrain authority is already unified, and NEXT_STEPS milestone 1 (authoritative actor state and grid combat) is done: both the player's and enemies' unique instance id, definition id, grid position, health, facing, equipment ids and attack reference now live in an authoritative `ActorState` (including the slow chaser's prepared-move flag, previously a private field), and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. A `GameState` aggregate (map, player/enemy state references, turn number, run status) exists and Main keeps it in sync, though Main still makes every decision itself - nothing reads from GameState yet. Next: extract a complete-turn resolver (TurnResolver) that actually reads and drives GameState, while preserving existing behavior and mod IDs.
+Terrain authority is already unified, and NEXT_STEPS milestone 1 (authoritative actor state and grid combat) is done: both the player's and enemies' unique instance id, definition id, grid position, health, facing, equipment ids and attack reference now live in an authoritative `ActorState` (including the slow chaser's prepared-move flag, previously a private field), and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. A `GameState` aggregate (map, player/enemy state references, turn number, run status) exists and Main keeps it in sync, though Main still makes every decision itself - nothing reads from GameState yet. Milestone 2 (complete-turn execution) has its first slice: `TurnResolver.ResolvePlayerAction` now owns the player's attack/dig/move rules, tested without a Godot node via a small interface. Enemy turns are still Main's/Enemy's job. Next: extract enemy turns the same way, and make TurnResolver actually read/drive GameState instead of Main passing it raw pieces.
 
 Approved direction to implement after that foundation:
 
@@ -64,7 +64,7 @@ Save/resume and debug history are **not implemented**. Debug history is not a pr
 
 ## Current limitations
 
-- `GameState` exists and is kept in sync, but nothing reads from it yet - Main still owns every decision; no TurnResolver.
+- `GameState` exists and is kept in sync, but nothing reads from it yet. `TurnResolver` only handles the player's action so far - enemy turns, input rejection and completion boundaries are still Main's own code.
 - A map seed does not reproduce enemy placement or guarantee the same mod roster/order.
 - No run save/load, debug-history export, persistent progression, or difficulty modifiers.
 - Closed-door blocking, floor transitions, wait, and obstacle-aware navigation remain open.
