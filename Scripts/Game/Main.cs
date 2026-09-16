@@ -624,12 +624,6 @@ public partial class Main : Node2D
 		}
 	}
 
-	private void OpenDoorAt(GridPosition position)
-	{
-		if (_dungeonMap.OpenDoor(position.X, position.Y))
-			_dungeonRenderer.RefreshCell(_dungeonMap, position.X, position.Y);
-	}
-
 	private bool IsEnemyActive(Enemy enemy)
 	{
 		return IsInstanceValid(enemy) &&
@@ -686,13 +680,22 @@ public partial class Main : Node2D
 			HashSet<GridPosition> occupiedPositions =
 				GetOccupiedEnemyPositions(enemy);
 
-			enemy.TakeTurn(
+			EnemyActionOutcome outcome = TurnResolver.ResolveEnemyAction(
+				enemy,
 				_player,
 				occupiedPositions,
-				GetCombatants()
+				GetCombatants(),
+				_dungeonMap
 			);
 
-			OpenDoorAt(enemy.GridPosition);
+			if (outcome.DoorOpened)
+			{
+				_dungeonRenderer.RefreshCell(
+					_dungeonMap,
+					outcome.ResultingPosition.X,
+					outcome.ResultingPosition.Y
+				);
+			}
 
 			if (_player.Health <= 0)
 				break;

@@ -73,10 +73,31 @@ public sealed class PlayerActionOutcome
 		new(PlayerActionKind.Blocked, targetCell, null, 0, false);
 }
 
-// First slice of NEXT_STEPS milestone 2: resolves the player's half of a
-// turn (attack -> dig -> move/bump), the same priority and rules Main used
-// to run inline. Enemy turns are not extracted yet - see TakeEnemyTurns in
-// Main.cs.
+// Where one enemy ended up after its turn and whether that opened a door -
+// enough for the caller to decide whether to refresh that cell's rendering.
+// Unlike PlayerActionOutcome this doesn't yet distinguish attack/move/turn:
+// IEnemyMovementBehavior.TakeTurn is still void and decides everything
+// through IEnemyMovementHost callbacks rather than returning a result, so
+// there is nothing richer to report yet. Making behaviors return an
+// explicit outcome is future work, not this slice.
+public sealed class EnemyActionOutcome
+{
+	public GridPosition ResultingPosition { get; }
+	public bool DoorOpened { get; }
+
+	public EnemyActionOutcome(GridPosition resultingPosition, bool doorOpened)
+	{
+		ResultingPosition = resultingPosition;
+		DoorOpened = doorOpened;
+	}
+}
+
+// Milestone 2 (NEXT_STEPS.md): resolves the player's half of a turn (attack
+// -> dig -> move/bump) and, more thinly, one enemy's turn. The player side
+// returns a typed outcome and needs no Godot node to test (IPlayerTurnActor);
+// the enemy side still runs Enemy.TakeTurn as-is (movement behaviors are
+// unchanged and still Godot/Player-coupled) and only wraps the
+// door-opening step that used to live in Main.
 public static class TurnResolver
 {
 	public static PlayerActionOutcome ResolvePlayerAction(
@@ -122,5 +143,22 @@ public static class TurnResolver
 		player.Move(direction);
 		bool doorOpened = map.OpenDoor(targetCell.X, targetCell.Y);
 		return PlayerActionOutcome.Moved(targetCell, doorOpened);
+	}
+
+	public static EnemyActionOutcome ResolveEnemyAction(
+		Enemy enemy,
+		Player player,
+		HashSet<GridPosition> occupiedEnemyPositions,
+		IReadOnlyList<ICombatant> combatants,
+		DungeonMap map)
+	{
+		enemy.TakeTurn(player, occupiedEnemyPositions, combatants);
+
+		bool doorOpened = map.OpenDoor(
+			enemy.GridPosition.X,
+			enemy.GridPosition.Y
+		);
+
+		return new EnemyActionOutcome(enemy.GridPosition, doorOpened);
 	}
 }
