@@ -1354,7 +1354,7 @@ public partial class Main : Node2D
 		GridPosition playerStart = new(2, 3);
 		_player.PlaceAt(playerStart, CellToPosition(playerStart));
 		_player.EquipWeapon(WeaponDefinitions.WarHammer);
-		_weaponLabel.Text = $"Weapon: {_player.Weapon.Name}";
+		UpdateWeaponDisplay(_player.Weapon);
 		_toolLabel.Text = $"Tool: {_player.DiggingTool.Name}";
 		_healthLabel.Text = $"HP: {_player.Health}";
 
