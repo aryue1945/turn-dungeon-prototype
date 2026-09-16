@@ -717,7 +717,7 @@ public partial class Main : Node2D
 
 			ApplyEnemyActionOutcome(enemy, outcome);
 
-			if (_player.Health <= 0)
+			if (_gameState.IsPlayerDefeated)
 				break;
 		}
 	}
@@ -755,7 +755,7 @@ public partial class Main : Node2D
 
 	private void CheckForVictory()
 	{
-		if (!_gameEnded && _enemies.Count == 0)
+		if (!_gameEnded && _gameState.AreAllEnemiesDefeated)
 			EndGame(true);
 	}
 

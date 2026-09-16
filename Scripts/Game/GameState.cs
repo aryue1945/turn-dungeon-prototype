@@ -16,8 +16,11 @@ public enum RunStatus
 //
 // This is a thin container, not a rules engine: Main still owns turn
 // execution and keeps this in sync (AddEnemy, RemoveDefeatedEnemies,
-// CompleteTurn, SetStatus). Extracting a TurnResolver that reads and drives
-// GameState directly is a later migration step - see NEXT_STEPS.md.
+// CompleteTurn, SetStatus). It is a real input now, though - Main decides
+// victory/death by reading IsPlayerDefeated/AreAllEnemiesDefeated from here
+// instead of its own actor list/health field. Extracting a TurnResolver
+// that reads and drives the rest of GameState directly is a later
+// migration step - see NEXT_STEPS.md.
 public sealed class GameState
 {
 	private readonly List<ActorState> _enemies = new();
@@ -27,6 +30,8 @@ public sealed class GameState
 	public IReadOnlyList<ActorState> Enemies => _enemies;
 	public int TurnNumber { get; private set; }
 	public RunStatus Status { get; private set; } = RunStatus.InProgress;
+	public bool IsPlayerDefeated => !Player.IsAlive;
+	public bool AreAllEnemiesDefeated => Enemies.Count == 0;
 
 	public GameState(DungeonMap map, ActorState player)
 	{

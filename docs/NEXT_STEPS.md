@@ -12,8 +12,8 @@ This roadmap separates completed foundation work from planned changes. Save/resu
 - Door IsOpen state and visual removal for player/enemy occupancy; doors remain walkable before opening.
 - Keyboard weapon selection with initial focus, arrow neighbors, confirm and 1/2 shortcuts.
 - Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods.
-- 63 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, GameState, TurnResolver, and enemy movement behaviors.
-- Milestone 1 (ActorState/GameState/grid combat) is done - see below.
+- 65 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, GameState, TurnResolver, and enemy movement behaviors.
+- Milestone 1 (ActorState/GameState/grid combat) is done; milestone 2 (complete-turn execution) is substantially done - see below.
 
 Tree/growing walls remain disabled in generation and the turn loop. Do not re-enable them incidentally. Full turns, save/load and debug export have no implementation or tests yet.
 
@@ -29,7 +29,7 @@ Acceptance: rules no longer read node positions; views derive positions from sta
 
 Risks (addressed): coordinate rotation, duplicate actor occupancy, lost private AI state, shared definition mutation.
 
-## 2. Complete-turn execution (in progress)
+## 2. Complete-turn execution (substantially done)
 
 Extract TurnResolver and adapt existing movement behaviors to state-based decisions/outcomes. Keep attack -> dig -> move/bump priority, sequential enemy order, door-on-occupancy behavior, and early victory/death semantics.
 
@@ -37,7 +37,9 @@ Done: `Scripts/Game/TurnResolver.cs` - `ResolvePlayerAction` resolves the player
 
 `IEnemyMovementBehavior.TakeTurn` now returns `EnemyActionResult` (Idle/Prepared/Moved/Attacked/Preparing/Blocked, with an attack name where relevant) instead of `void` - `Enemy.TryMoveForward` returns the same type and no longer prints directly (Main narrates via `ApplyEnemyActionOutcome`, matching the player side). The `player` parameter narrowed from the concrete `Player` class to `ICombatant` (only `GridPosition` was ever used), so all four behaviors are now unit tested (`Tests/EnemyMovementBehaviorTests.cs`) against a fake host and fake player - no Godot node needed, mirroring `IPlayerTurnActor`.
 
-Remaining: `ResolveEnemyAction` itself still takes concrete `Enemy`/`Player` and needs a real node to test - only the behavior decision inside it is decoupled so far. The enemy-phase loop (iterate enemies, stop on player death), the top-of-method gameplay-input guard, victory/death checks, and completion boundary are still Main's own code, not TurnResolver's; TurnResolver does not read or write GameState yet - Main still passes it the raw pieces (player, combatants, map) directly.
+`GameState` gained `IsPlayerDefeated`/`AreAllEnemiesDefeated`, and `Main.CheckForVictory`/`TakeEnemyTurns` read those instead of `_enemies.Count`/`_player.Health` directly - both were already kept live in sync, so this is the first rule that actually depends on GameState rather than mirroring into it.
+
+Deliberately deferred, judged not worth closing before moving to milestone 3: the enemy-phase loop (iterate enemies, stop on player death) stays in `Main.TakeEnemyTurns` - moving it into TurnResolver would mean passing it a pile of delegates for Main's enemy-liveness/occupancy/combatant-list logic, relocating complexity rather than reducing it. `ResolveEnemyAction` still takes concrete `Enemy`/`Player` and needs a real node to test itself (only the behavior decision inside it is decoupled). The top-of-method gameplay-input guard and the completion-boundary concept (see Turn contract step 7 in ARCHITECTURE.md) are still Main's own code, not a formal TurnResolver step.
 
 Acceptance: plain NUnit tests cover complete turns, dead enemies never act, later enemies stop after player death, and each consumed command has exactly one completion boundary even on terminal turns.
 

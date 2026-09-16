@@ -23,6 +23,34 @@ public sealed class GameStateTests
 	}
 
 	[Test]
+	public void IsPlayerDefeated_ReflectsPlayerHealth()
+	{
+		ActorState player = CreatePlayerState();
+		GameState state = new(Generate(seed: 1), player);
+
+		Assert.That(state.IsPlayerDefeated, Is.False);
+
+		player.TakeDamage(3);
+
+		Assert.That(state.IsPlayerDefeated, Is.True);
+	}
+
+	[Test]
+	public void AreAllEnemiesDefeated_IsTrueOnlyWhenNoEnemiesRemain()
+	{
+		GameState state = new(Generate(seed: 1), CreatePlayerState());
+		Assert.That(state.AreAllEnemiesDefeated, Is.True, "No enemies added yet.");
+
+		ActorState enemy = CreateEnemyState();
+		state.AddEnemy(enemy);
+		Assert.That(state.AreAllEnemiesDefeated, Is.False);
+
+		enemy.TakeDamage(1);
+		state.RemoveDefeatedEnemies();
+		Assert.That(state.AreAllEnemiesDefeated, Is.True);
+	}
+
+	[Test]
 	public void Constructor_RejectsNullMapOrPlayer()
 	{
 		DungeonMap map = Generate(seed: 1);
