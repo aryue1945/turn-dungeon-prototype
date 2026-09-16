@@ -1,12 +1,21 @@
 public sealed class WeaponDefinition : IEquipment
 {
+	public string Id { get; }
 	public string Name { get; }
 	public AttackDefinition PrimaryAttack { get; }
 
 	public WeaponDefinition(
+		string id,
 		string name,
 		AttackDefinition primaryAttack)
 	{
+		if (string.IsNullOrWhiteSpace(id))
+			throw new System.ArgumentException("A weapon definition requires an id.");
+
+		if (string.IsNullOrWhiteSpace(name))
+			throw new System.ArgumentException("A weapon definition requires a name.");
+
+		Id = id;
 		Name = name;
 		PrimaryAttack = primaryAttack;
 	}
@@ -26,6 +35,7 @@ public static class WeaponDefinitions
 	};
 
 	public static readonly WeaponDefinition BasicSword = new(
+		id: "core.basic_sword",
 		name: "Basic Sword",
 		primaryAttack: new AttackDefinition(
 			name: "Sword Strike",
@@ -40,6 +50,7 @@ public static class WeaponDefinitions
 	);
 
 	public static readonly WeaponDefinition LongSword = new(
+		id: "core.long_sword",
 		name: "Long Sword",
 		primaryAttack: new AttackDefinition(
 			name: "Long Sword Strike",
