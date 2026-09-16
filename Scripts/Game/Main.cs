@@ -369,10 +369,16 @@ public partial class Main : Node2D
 
 	// Built-in monsters plus any monster mods found on disk. Kept as data
 	// (MonsterDefinition) so SpawnEnemies doesn't need to know which
-	// monsters are built-in versus modded.
+	// monsters are built-in versus modded. MonsterModLoader already rejects
+	// a duplicate id between two mod files; this is the one remaining case
+	// it cannot see for itself - a mod redefining a built-in id - rejected
+	// the same way (disabled with a readable error, built-in wins) rather
+	// than silently overwriting or duplicating the built-in definition
+	// (NEXT_STEPS milestone 5).
 	private List<MonsterDefinition> BuildSpawnPool()
 	{
 		List<MonsterDefinition> pool = new(MonsterDefinitions.All);
+		HashSet<string> builtInIds = new(MonsterDefinitions.All.Select(definition => definition.Id));
 
 		string modsPath = ProjectSettings.GlobalizePath("res://mods");
 		MonsterModLoadResult modResult = MonsterModLoader.LoadFromDirectory(modsPath);
@@ -380,11 +386,25 @@ public partial class Main : Node2D
 		foreach (string error in modResult.Errors)
 			GD.PushError(error);
 
-		if (modResult.Monsters.Count > 0)
+		int addedCount = 0;
+
+		foreach (MonsterDefinition modded in modResult.Monsters)
 		{
-			GD.Print($"Loaded {modResult.Monsters.Count} modded monster(s) from {modsPath}.");
-			pool.AddRange(modResult.Monsters);
+			if (builtInIds.Contains(modded.Id))
+			{
+				GD.PushError(
+					$"Modded monster \"{modded.Id}\" disabled: duplicate id is already " +
+						"defined by a built-in monster."
+				);
+				continue;
+			}
+
+			pool.Add(modded);
+			addedCount++;
 		}
+
+		if (addedCount > 0)
+			GD.Print($"Loaded {addedCount} modded monster(s) from {modsPath}.");
 
 		return pool;
 	}

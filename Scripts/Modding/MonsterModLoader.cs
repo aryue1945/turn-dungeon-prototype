@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 // JSON shape a mod author writes under mods/<mod-id>/monsters/*.json. Field
@@ -64,18 +65,33 @@ public static class MonsterModLoader
 		List<MonsterDefinition> monsters = new();
 		List<string> errors = new();
 
+		// Every id seen so far in this load pass, and which file first
+		// defined it - lets a later duplicate be rejected with a readable
+		// error naming both sources (NEXT_STEPS milestone 5) instead of
+		// silently overwriting or duplicating an earlier definition.
+		Dictionary<string, string> sourceById = new();
+
 		if (string.IsNullOrWhiteSpace(modsRootPath) || !Directory.Exists(modsRootPath))
 			return new MonsterModLoadResult(monsters, errors);
 
-		foreach (string modFolder in Directory.GetDirectories(modsRootPath))
+		// Sorted rather than raw filesystem enumeration order (which is not
+		// guaranteed stable across platforms/runs) so mod load order can
+		// never change which monsters end up in the pool or in what order -
+		// NEXT_STEPS milestone 5's "filesystem enumeration and mod load
+		// order must not change encounter generation".
+		foreach (string modFolder in Directory.GetDirectories(modsRootPath)
+			.OrderBy(path => path, StringComparer.Ordinal))
 		{
 			string monstersFolder = Path.Combine(modFolder, "monsters");
 
 			if (!Directory.Exists(monstersFolder))
 				continue;
 
-			foreach (string monsterFile in Directory.GetFiles(monstersFolder, "*.json"))
-				LoadMonsterFile(modFolder, monsterFile, monsters, errors);
+			foreach (string monsterFile in Directory.GetFiles(monstersFolder, "*.json")
+				.OrderBy(path => path, StringComparer.Ordinal))
+			{
+				LoadMonsterFile(modFolder, monsterFile, monsters, errors, sourceById);
+			}
 		}
 
 		return new MonsterModLoadResult(monsters, errors);
@@ -85,7 +101,8 @@ public static class MonsterModLoader
 		string modFolder,
 		string monsterFilePath,
 		List<MonsterDefinition> monsters,
-		List<string> errors)
+		List<string> errors,
+		Dictionary<string, string> sourceById)
 	{
 		string fileLabel = Path.GetFileName(monsterFilePath);
 		MonsterModJson json;
@@ -112,6 +129,17 @@ public static class MonsterModLoader
 		if (string.IsNullOrWhiteSpace(json.Id))
 		{
 			errors.Add($"{displayName} disabled: missing required field \"id\".");
+			return;
+		}
+
+		string sourceLabel = Path.Combine(Path.GetFileName(modFolder), "monsters", fileLabel);
+
+		if (sourceById.TryGetValue(json.Id, out string existingSource))
+		{
+			errors.Add(
+				$"{displayName} disabled: duplicate id \"{json.Id}\" is already defined by " +
+					$"{existingSource}."
+			);
 			return;
 		}
 
@@ -170,6 +198,7 @@ public static class MonsterModLoader
 				attacks: attacks,
 				lootTableId: json.LootTable
 			));
+			sourceById[json.Id] = sourceLabel;
 		}
 		catch (Exception ex)
 		{
