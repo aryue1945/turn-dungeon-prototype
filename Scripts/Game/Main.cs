@@ -23,6 +23,7 @@ public partial class Main : Node2D
 	private Label _healthLabel;
 	private Label _weaponLabel;
 	private Label _toolLabel;
+	private Button _exportHistoryButton;
 	private Label _statusLabel;
 	private Button _restartButton;
 	private Control _endGameOverlay;
@@ -401,7 +402,7 @@ public partial class Main : Node2D
 		hudPanel.OffsetLeft = 12;
 		hudPanel.OffsetTop = 12;
 		hudPanel.OffsetRight = 224;
-		hudPanel.OffsetBottom = 112;
+		hudPanel.OffsetBottom = 148;
 
 		MarginContainer hudMargin = new();
 		hudMargin.AddThemeConstantOverride("margin_left", 10);
@@ -437,6 +438,15 @@ public partial class Main : Node2D
 		_toolLabel.AddThemeFontSizeOverride("font_size", 16);
 		_toolLabel.AddThemeColorOverride("font_color", Colors.White);
 		hud.AddChild(_toolLabel);
+
+		// Available during play and on the end screen (this HUD panel is
+		// never hidden) per docs/SAVE_AND_DEBUG_HISTORY.md.
+		_exportHistoryButton = new Button
+		{
+			Text = "Export Debug History"
+		};
+		_exportHistoryButton.Pressed += OnExportDebugHistoryPressed;
+		hud.AddChild(_exportHistoryButton);
 
 		CenterContainer endGameCenter = new();
 		uiRoot.AddChild(endGameCenter);
@@ -845,5 +855,26 @@ public partial class Main : Node2D
 	private void OnRestartPressed()
 	{
 		GetTree().ReloadCurrentScene();
+	}
+
+	// Reads the already-captured DebugHistory and writes it out - no turn,
+	// state or RNG involved, matching the export rule in
+	// docs/SAVE_AND_DEBUG_HISTORY.md.
+	private void OnExportDebugHistoryPressed()
+	{
+		if (_debugHistory == null)
+		{
+			GD.Print("No debug history to export yet.");
+			return;
+		}
+
+		string json = DebugHistoryExporter.ToJson(_debugHistory);
+		string path = System.IO.Path.Combine(
+			OS.GetUserDataDir(),
+			"debug_history_export.json"
+		);
+		System.IO.File.WriteAllText(path, json);
+
+		GD.Print($"Exported debug history to {path}");
 	}
 }
