@@ -85,12 +85,12 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		}
 	}
 
-	public void TakeTurn(
+	public EnemyActionResult TakeTurn(
 		Player player,
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
-		_movementBehavior.TakeTurn(
+		return _movementBehavior.TakeTurn(
 			this,
 			player,
 			occupiedEnemyPositions,
@@ -117,7 +117,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	void IEnemyMovementHost.TurnLeft() => TurnLeft();
 	void IEnemyMovementHost.TurnRight() => TurnRight();
 
-	EnemyMoveResult IEnemyMovementHost.TryMoveForward(
+	EnemyActionResult IEnemyMovementHost.TryMoveForward(
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
@@ -138,7 +138,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		UpdateFacingIndicatorRotation();
 	}
 
-	private EnemyMoveResult TryMoveForward(
+	private EnemyActionResult TryMoveForward(
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
@@ -153,17 +153,11 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 				_isWallAt
 			);
 
-		if (attackResult != AttackTurnResult.NoAttack)
-		{
-			string actionText = attackResult == AttackTurnResult.Preparing
-				? "prepares"
-				: "used";
+		if (attackResult == AttackTurnResult.Attacked)
+			return EnemyActionResult.Attacked(Attack.Definition.Name);
 
-			GD.Print(
-				$"{Name} {actionText} {Attack.Definition.Name}."
-			);
-			return EnemyMoveResult.AttackAction;
-		}
+		if (attackResult == AttackTurnResult.Preparing)
+			return EnemyActionResult.Preparing(Attack.Definition.Name);
 
 		GridPosition nextGridPosition = new(
 			_state.GridPosition.X + (int)facing.X,
@@ -173,12 +167,12 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		if (_isWallAt(nextGridPosition) ||
 			occupiedEnemyPositions.Contains(nextGridPosition))
 		{
-			return EnemyMoveResult.Blocked;
+			return EnemyActionResult.Blocked;
 		}
 
 		Position += facing * TileSize;
 		_state.MoveTo(nextGridPosition);
-		return EnemyMoveResult.Moved;
+		return EnemyActionResult.Moved;
 	}
 
 	private void ApplyTypeDisplay()
