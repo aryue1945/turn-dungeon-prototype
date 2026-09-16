@@ -21,6 +21,18 @@ public sealed class DefinitionRegistryTests
 	}
 
 	[Test]
+	public void WeaponDefinitions_AllCurrentWeaponsHaveAnIcon()
+	{
+		// SpritePath is optional on WeaponDefinition (a future weapon need
+		// not have art ready immediately), but every weapon that exists
+		// today should not silently regress to a missing icon.
+		Assert.That(
+			WeaponDefinitions.All.All(weapon => !string.IsNullOrWhiteSpace(weapon.SpritePath)),
+			Is.True
+		);
+	}
+
+	[Test]
 	public void DiggingToolDefinitions_AllHasNoDuplicateIds()
 	{
 		Assert.That(

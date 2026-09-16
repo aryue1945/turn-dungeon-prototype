@@ -4,10 +4,18 @@ public sealed class WeaponDefinition : IEquipment
 	public string Name { get; }
 	public AttackDefinition PrimaryAttack { get; }
 
+	// Optional (null when a weapon has no icon yet) - a res:// path to a
+	// small icon, sized in whole grid cells matching the weapon's reach
+	// (32x32 per cell it hits forward - see Art/Weapons). Loaded by Main,
+	// not here; this class stays engine-agnostic like MonsterDefinition's
+	// SpritePath.
+	public string SpritePath { get; }
+
 	public WeaponDefinition(
 		string id,
 		string name,
-		AttackDefinition primaryAttack)
+		AttackDefinition primaryAttack,
+		string spritePath = null)
 	{
 		if (string.IsNullOrWhiteSpace(id))
 			throw new System.ArgumentException("A weapon definition requires an id.");
@@ -18,6 +26,7 @@ public sealed class WeaponDefinition : IEquipment
 		Id = id;
 		Name = name;
 		PrimaryAttack = primaryAttack;
+		SpritePath = spritePath;
 	}
 }
 
@@ -46,7 +55,8 @@ public static class WeaponDefinitions
 			targetRule: AttackTargetRule.OpponentsOnly,
 			stopsAtWalls: true,
 			maxTargets: 1
-		)
+		),
+		spritePath: "res://Art/Weapons/basic_sword.svg"
 	);
 
 	public static readonly WeaponDefinition LongSword = new(
@@ -61,7 +71,8 @@ public static class WeaponDefinitions
 			targetRule: AttackTargetRule.OpponentsOnly,
 			stopsAtWalls: true,
 			maxTargets: 1
-		)
+		),
+		spritePath: "res://Art/Weapons/long_sword.svg"
 	);
 
 	// First tactical-slice weapon (NEXT_STEPS roadmap item 3): same reach
@@ -81,7 +92,8 @@ public static class WeaponDefinitions
 			stopsAtWalls: true,
 			maxTargets: 1,
 			knockback: true
-		)
+		),
+		spritePath: "res://Art/Weapons/war_hammer.svg"
 	);
 
 	public static readonly System.Collections.Generic.IReadOnlyList<WeaponDefinition> All = new[]
