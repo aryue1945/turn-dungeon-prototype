@@ -45,6 +45,7 @@ public partial class Main : Node2D
 	private bool _wasPlayerInputEnabledBeforePauseMenu;
 	private SaveFileLoadOutcome _pendingLoadOutcome;
 	private bool _hasUnfinishedResumableRun;
+	private bool _isFixedEncounter;
 	private OverwriteConfirmationReason _overwriteConfirmationReason;
 	private static bool _skipStartupMenuForNewRun;
 
@@ -163,6 +164,20 @@ public partial class Main : Node2D
 			else
 				return;
 
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
+		// Debug-only launcher for the hand-built War Hammer/Charging
+		// Beetle/Spike Trap encounter (NEXT_STEPS roadmap item 3), only
+		// reachable from the startup screen so it can never fire mid-play.
+		if (_startupMenuOverlay.Visible &&
+			@event is InputEventKey debugKey &&
+			debugKey.Pressed &&
+			!debugKey.Echo &&
+			debugKey.Keycode == Key.F)
+		{
+			StartFixedEncounter();
 			GetViewport().SetInputAsHandled();
 			return;
 		}
@@ -1257,6 +1272,74 @@ public partial class Main : Node2D
 		ShowWeaponSelection();
 	}
 
+	// Debug-only hand-built encounter for manually playtesting the War
+	// Hammer/Charging Beetle/Spike Trap interaction (NEXT_STEPS roadmap
+	// item 3), reachable only by pressing "F" on the startup screen -
+	// entirely separate from DungeonGenerator/EncounterPlanner, per the
+	// instruction to keep this out of procedural generation until the
+	// interaction is proven. Autosave is suppressed (_isFixedEncounter)
+	// so testing it can never overwrite a real save.
+	private void StartFixedEncounter()
+	{
+		_startupMenuOverlay.Visible = false;
+		_isFixedEncounter = true;
+
+		const int width = 11;
+		const int height = 7;
+
+		_dungeonSeed = unchecked((int)_random.Randi());
+		_dungeonMap = new DungeonMap(width, height, _dungeonSeed);
+
+		for (int y = 0; y < height; y++)
+		{
+			for (int x = 0; x < width; x++)
+			{
+				bool isBoundary = x == 0 || y == 0 || x == width - 1 || y == height - 1;
+				_dungeonMap.SetTerrain(x, y, isBoundary ? TerrainKind.SolidWall : TerrainKind.Floor);
+			}
+		}
+
+		// One spike trap between the player's and the beetle's starting
+		// cells, with open floor on every side - enough room to melee the
+		// beetle down directly, lure its charge across the spike, or
+		// hammer-knock it onto the spike once adjacent.
+		GridPosition spikePosition = new(5, 3);
+		_dungeonMap.SetTerrain(spikePosition.X, spikePosition.Y, TerrainKind.SpikeTrap);
+
+		BuildAndRenderDungeon();
+
+		GridPosition playerStart = new(2, 3);
+		_player.PlaceAt(playerStart, CellToPosition(playerStart));
+		_player.EquipWeapon(WeaponDefinitions.WarHammer);
+		_weaponLabel.Text = $"Weapon: {_player.Weapon.Name}";
+		_toolLabel.Text = $"Tool: {_player.DiggingTool.Name}";
+		_healthLabel.Text = $"HP: {_player.Health}";
+
+		_gameState = new GameState(_dungeonMap, _player.State);
+		CreateFollowingCamera();
+
+		GridPosition beetleStart = new(8, 3);
+		Enemy beetle = _enemyScene.Instantiate<Enemy>();
+		beetle.Name = "fixed_encounter_charging_beetle";
+		beetle.Configure(
+			MonsterDefinitions.ChargingBeetle,
+			beetleStart,
+			CellToPosition(beetleStart),
+			IsWallAt
+		);
+		AddChild(beetle);
+		_enemies.Add(beetle);
+		_gameState.AddEnemy(beetle.State);
+
+		_currentPlayerZoneId = -1;
+		_gameStarted = true;
+		_player.SetProcessUnhandledInput(true);
+
+		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
+
+		GD.Print("Started fixed tactical encounter: War Hammer + Charging Beetle + Spike Trap.");
+	}
+
 	// Continue: rebuilds map/actor/enemy views from a validated save
 	// instead of fresh generation, then resumes (or, for an already-
 	// finished run, shows the same end screen a live run would have
@@ -1669,6 +1752,11 @@ public partial class Main : Node2D
 	// something that should crash a turn.
 	private void AutosaveCurrentRun()
 	{
+		// The debug fixed encounter (StartFixedEncounter) must never
+		// overwrite a real save just from being played for testing.
+		if (_isFixedEncounter)
+			return;
+
 		try
 		{
 			RunSaveEnvelope envelope = RunSaveEnvelope.Capture(
