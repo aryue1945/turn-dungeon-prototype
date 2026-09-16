@@ -1194,6 +1194,23 @@ public partial class Main : Node2D
 			enemyDefinitions.Add(definition);
 		}
 
+		// Compare against the current definitions' fingerprint before
+		// touching any live state - a changed weapon/tool/monster shape
+		// (not just a missing one) must also refuse Continue rather than
+		// silently restoring against content that no longer matches what
+		// was saved (NEXT_STEPS milestone 5).
+		string currentFingerprint = ContentFingerprinter.ComputeForRun(
+			WeaponSummary.From(weapon),
+			ToolSummary.From(tool),
+			enemyDefinitions.Select(MonsterSummary.From)
+		);
+
+		if (currentFingerprint != envelope.ContentFingerprint)
+		{
+			error = "Saved content has changed (weapon, tool, or monster definitions differ from when this run was saved).";
+			return false;
+		}
+
 		error = null;
 		return true;
 	}
@@ -1585,7 +1602,14 @@ public partial class Main : Node2D
 	{
 		try
 		{
-			RunSaveFileService.Save(OS.GetUserDataDir(), RunSaveEnvelope.Capture(_gameState));
+			RunSaveEnvelope envelope = RunSaveEnvelope.Capture(
+				_gameState,
+				_player.Weapon,
+				_player.DiggingTool,
+				_enemies.Select(enemy => enemy.Definition)
+			);
+
+			RunSaveFileService.Save(OS.GetUserDataDir(), envelope);
 		}
 		catch (Exception exception)
 		{

@@ -1,8 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
-using System.Text;
 
 // Compact description of one attack pattern offset, for the debug export -
 // enough to reconstruct where an attack reaches without embedding the
@@ -93,6 +91,23 @@ public sealed class WeaponSummary
 		new(weapon.Id, weapon.Name, AttackSummary.From(weapon.PrimaryAttack));
 }
 
+public sealed class ToolSummary
+{
+	public string Id { get; }
+	public string Name { get; }
+	public int TerrainDamage { get; }
+
+	public ToolSummary(string id, string name, int terrainDamage)
+	{
+		Id = id;
+		Name = name;
+		TerrainDamage = terrainDamage;
+	}
+
+	public static ToolSummary From(DiggingToolDefinition tool) =>
+		new(tool.Id, tool.Name, tool.TerrainDamage);
+}
+
 public sealed class MonsterSummary
 {
 	public string Id { get; }
@@ -158,33 +173,16 @@ public sealed class DebugHistoryExportContext
 	// A short, order-independent fingerprint of the current weapon/monster
 	// roster's gameplay-relevant fields, so an export can flag "this was
 	// generated against different content" without embedding executable mod
-	// code (docs/SAVE_AND_DEBUG_HISTORY.md).
+	// code (docs/SAVE_AND_DEBUG_HISTORY.md). Delegates to the shared
+	// ContentFingerprinter canonicalize-and-hash implementation also used by
+	// RunSaveEnvelope's narrower, run-scoped save-content fingerprint
+	// (NEXT_STEPS milestone 5) - one algorithm, not two.
 	public string ComputeContentFingerprint()
 	{
-		StringBuilder builder = new();
-
-		foreach (WeaponSummary weapon in Weapons.OrderBy(w => w.Id, StringComparer.Ordinal))
-			AppendAttack(builder, weapon.Id, weapon.PrimaryAttack);
-
-		foreach (MonsterSummary monster in Monsters.OrderBy(m => m.Id, StringComparer.Ordinal))
-		{
-			builder.Append(monster.Id).Append('|').Append(monster.Health).Append('|')
-				.Append(monster.MovementBehaviorId).Append(';');
-
-			foreach (AttackSummary attack in monster.Attacks)
-				AppendAttack(builder, monster.Id, attack);
-		}
-
-		byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(builder.ToString()));
-		return Convert.ToHexString(hash)[..16];
-	}
-
-	private static void AppendAttack(StringBuilder builder, string ownerId, AttackSummary attack)
-	{
-		builder.Append(ownerId).Append('|').Append(attack.Name).Append('|')
-			.Append(attack.Damage).Append('|').Append(attack.PreparationTurns).Append('|')
-			.Append(attack.TargetRule).Append('|').Append(attack.StopsAtWalls).Append('|')
-			.Append(attack.MaxTargets).Append(';');
+		List<string> lines = new();
+		lines.AddRange(Weapons.Select(ContentFingerprinter.DescribeWeapon));
+		lines.AddRange(Monsters.Select(ContentFingerprinter.DescribeMonster));
+		return ContentFingerprinter.Compute(lines);
 	}
 }
 
