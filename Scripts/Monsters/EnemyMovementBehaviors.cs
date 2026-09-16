@@ -143,6 +143,69 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 	}
 }
 
+// Prepares for one turn (visibly locking a charge direction toward the
+// player, exactly like ChasePlayerBehavior's telegraph), then charges up to
+// two cells in that direction on the next turn. Each cell of the charge is
+// one TryMoveForward call, so the existing attack-before-move check inside
+// it already makes the beetle attack instead of moving onto an occupied
+// cell, and a Blocked/Attacked result already ends the charge early - no
+// new combat or forced-movement code needed here, only the up-to-two-steps
+// loop. First tactical-slice enemy (NEXT_STEPS roadmap item 3).
+public sealed class ChargingBeetleBehavior : IEnemyMovementBehavior
+{
+	private const int ChargeDistanceCells = 2;
+
+	public Vector2 InitialFacingDirection => Vector2.Down;
+	public bool ShowsFacingIndicatorInitially => false;
+
+	public EnemyActionResult TakeTurn(
+		IEnemyMovementHost host,
+		ICombatant player,
+		HashSet<GridPosition> occupiedEnemyPositions,
+		IReadOnlyList<ICombatant> combatants)
+	{
+		if (!host.HasPreparedMove)
+		{
+			PrepareCharge(host, player.GridPosition);
+			host.SetHasPreparedMove(true);
+			return EnemyActionResult.Prepared;
+		}
+
+		host.SetHasPreparedMove(false);
+		host.SetFacingIndicatorVisible(false);
+
+		EnemyActionResult result = EnemyActionResult.Blocked;
+
+		for (int step = 0; step < ChargeDistanceCells; step++)
+		{
+			result = host.TryMoveForward(occupiedEnemyPositions, combatants);
+
+			if (result.Kind != EnemyActionKind.Moved)
+				break;
+		}
+
+		return result;
+	}
+
+	private static void PrepareCharge(
+		IEnemyMovementHost host,
+		GridPosition playerGridPosition)
+	{
+		int deltaX = playerGridPosition.X - host.GridPosition.X;
+		int deltaY = playerGridPosition.Y - host.GridPosition.Y;
+
+		if (deltaX == 0 && deltaY == 0)
+			return;
+
+		Vector2 direction = Math.Abs(deltaX) > Math.Abs(deltaY)
+			? new Vector2(Math.Sign(deltaX), 0)
+			: new Vector2(0, Math.Sign(deltaY));
+
+		host.SetFacingDirection(direction);
+		host.SetFacingIndicatorVisible(true);
+	}
+}
+
 // Walks forward; turns right only when blocked. Mirrors the former
 // "Patroller" enemy type.
 public sealed class PatrolBehavior : IEnemyMovementBehavior
@@ -230,6 +293,7 @@ public static class EnemyMovementBehaviors
 	private static readonly Dictionary<string, Func<IEnemyMovementBehavior>> Factories = new()
 	{
 		["chase_player"] = () => new ChasePlayerBehavior(),
+		["charge_beetle"] = () => new ChargingBeetleBehavior(),
 		["patrol"] = () => new PatrolBehavior(),
 		["turn_left"] = () => new TurningWalkerBehavior(turnRight: false),
 		["turn_right"] = () => new TurningWalkerBehavior(turnRight: true),
