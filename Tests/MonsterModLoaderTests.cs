@@ -242,6 +242,97 @@ public sealed class MonsterModLoaderTests
 		Assert.That(result.Errors[0], Does.Contain("Bad Monster disabled"));
 	}
 
+	[Test]
+	public void LoadFromDirectory_DuplicateIdAcrossTwoModsIsRejectedNamingBothSources()
+	{
+		CreateMod(
+			"fire-rat",
+			"fire_rat.json",
+			"""
+			{
+				"id": "example.duplicate",
+				"name": "First Rat",
+				"health": 3,
+				"sprite": "fire_rat.png",
+				"movement": "chase_player",
+				"attacks": [ { "pattern": "adjacent", "damage": 1 } ]
+			}
+			""",
+			spriteFileName: "fire_rat.png"
+		);
+
+		CreateMod(
+			"ice-rat",
+			"ice_rat.json",
+			"""
+			{
+				"id": "example.duplicate",
+				"name": "Second Rat",
+				"health": 3,
+				"sprite": "ice_rat.png",
+				"movement": "patrol",
+				"attacks": [ { "pattern": "adjacent", "damage": 1 } ]
+			}
+			""",
+			spriteFileName: "ice_rat.png"
+		);
+
+		MonsterModLoadResult result = MonsterModLoader.LoadFromDirectory(_modsRoot);
+
+		Assert.That(result.Monsters, Has.Count.EqualTo(1));
+		Assert.That(result.Monsters[0].Name, Is.EqualTo("First Rat"), "fire-rat sorts before ice-rat.");
+		Assert.That(result.Errors, Has.Count.EqualTo(1));
+		Assert.That(result.Errors[0], Does.Contain("Second Rat disabled"));
+		Assert.That(result.Errors[0], Does.Contain("duplicate id \"example.duplicate\""));
+		Assert.That(result.Errors[0], Does.Contain("fire-rat"));
+		Assert.That(result.Errors[0], Does.Contain("fire_rat.json"));
+	}
+
+	[Test]
+	public void LoadFromDirectory_EnumerationOrderDoesNotAffectResult()
+	{
+		// Mod/file folders are created in reverse-alphabetical order on
+		// disk; LoadFromDirectory must still produce the same result -
+		// filesystem enumeration order is not guaranteed sorted.
+		CreateMod(
+			"zebra-mod",
+			"zebra.json",
+			"""
+			{
+				"id": "example.zebra",
+				"name": "Zebra Monster",
+				"health": 3,
+				"sprite": "zebra.png",
+				"movement": "stationary",
+				"attacks": [ { "pattern": "adjacent", "damage": 1 } ]
+			}
+			""",
+			spriteFileName: "zebra.png"
+		);
+
+		CreateMod(
+			"alpha-mod",
+			"alpha.json",
+			"""
+			{
+				"id": "example.alpha",
+				"name": "Alpha Monster",
+				"health": 3,
+				"sprite": "alpha.png",
+				"movement": "stationary",
+				"attacks": [ { "pattern": "adjacent", "damage": 1 } ]
+			}
+			""",
+			spriteFileName: "alpha.png"
+		);
+
+		MonsterModLoadResult result = MonsterModLoader.LoadFromDirectory(_modsRoot);
+
+		Assert.That(result.Monsters, Has.Count.EqualTo(2));
+		Assert.That(result.Monsters[0].Id, Is.EqualTo("example.alpha"));
+		Assert.That(result.Monsters[1].Id, Is.EqualTo("example.zebra"));
+	}
+
 	private void CreateMod(
 		string modFolderName,
 		string monsterFileName,
