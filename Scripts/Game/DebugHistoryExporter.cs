@@ -1,5 +1,4 @@
 using System.Text.Json;
-using System.Text.Json.Serialization;
 
 // Builds the human/AI-readable JSON for Export Debug History
 // (docs/SAVE_AND_DEBUG_HISTORY.md). Pure string-building only - writing it
@@ -9,12 +8,7 @@ using System.Text.Json.Serialization;
 // serializing an already-captured DebugHistory can't do any of those.
 public static class DebugHistoryExporter
 {
-	private static readonly JsonSerializerOptions Options = new()
-	{
-		WriteIndented = true,
-		PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-		Converters = { new JsonStringEnumConverter() }
-	};
+	private static readonly JsonSerializerOptions Options = GameJsonOptions.Create();
 
 	public static string ToJson(DebugHistory history)
 	{
