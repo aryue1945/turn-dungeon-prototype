@@ -14,7 +14,8 @@ Reviewed against main `c4a5d2e99236852b8374e8c733f0ac521deeff20` on 2026-09-16 (
 - Doors are walkable before opening. Player or enemy occupancy sets `IsOpen`; the door graphic disappears.
 - Defeat all enemies to win; player death ends the game. Restart (button or the "R" key) starts a fresh run immediately, bypassing the Continue/New Run choice for the run just finished.
 - On launch, an unfinished saved run offers Continue (resume exactly where you left off, skipping weapon selection) or New Run (confirms first if it would overwrite that unfinished run); a finished save or no save at all goes straight to New Run.
-- ESC opens a pause menu during play (Restart - confirms first since a run is in progress; Quit; Resume). No explicit wait command yet.
+- ESC opens a pause menu during play (Restart - confirms first since a run is in progress; Quit; Resume).
+- Space waits: consumes a turn without moving, attacking, or digging (enemies still act afterward).
 - Camera: mouse wheel or +/- to zoom, 0 to reset during gameplay.
 - An "Export Debug History" HUD button (or the "X" key) opens a menu to export the last 3, 5 (default) or 10 turns plus the snapshot immediately before them to a JSON file under the user data directory, including per-attack detail, derived per-cell actor ids, and compact weapon/monster summaries, for diagnosing unexpected behavior.
 
@@ -42,13 +43,13 @@ dotnet build "New Game Project.csproj"
 dotnet test Tests/TurnDungeon.Tests.csproj
 ```
 
-The source contains 147 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading (including duplicate-id rejection), actor state, game state, turn resolution, enemy movement behaviors, game snapshots, debug history, its exporter, map restore, actor restore, run save serialization, the save-file service, definition-registry lookups, encounter planning, and content fingerprinting. Godot input/rendering integration coverage is still missing - Main is a Godot node and untested directly.
+The source contains 148 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading (including duplicate-id rejection), actor state, game state, turn resolution (including Wait), enemy movement behaviors, game snapshots, debug history, its exporter, map restore, actor restore, run save serialization, the save-file service, definition-registry lookups, encounter planning, and content fingerprinting. Godot input/rendering integration coverage is still missing - Main is a Godot node and untested directly.
 
 ## Architecture and next work
 
 NEXT_STEPS milestones 1-5 are done: authoritative actor state and grid combat; complete-turn execution through `TurnResolver`; snapshot capture with a Last 3/5/10-turn debug-history export (per-attack detail, derived per-cell actor ids, identity/content metadata); full save/resume (`GameSnapshotRestore`, `RunSaveEnvelope`/`RunSaveSerializer`, `RunSaveFileService`'s backup/recovery, and Main's Continue/New Run/autosave/pause-menu flow); and reproducible encounter generation (duplicate-id rejection, stable content ordering, a seeded `EncounterPlanner` with an explicit spawn budget, and save-content fingerprint validation via a shared `ContentFingerprinter`). See [Architecture](docs/ARCHITECTURE.md) for the full breakdown.
 
-The active direction now is gameplay content, not more architecture - see [Next steps](docs/NEXT_STEPS.md)'s "Active roadmap": a manual verification pass of the save/resume flow, an explicit Wait command, then a first tactical slice (one weapon, one enemy, one hazard, one designed encounter), a floor-clear objective, and the fuller loop beyond that. Deferred architecture work with no current gameplay requirement (RNG-stream continuation after loading, save schema migration, per-definition fingerprint diagnostics, a generalized hazard framework, and more) lives in that document's "Architecture backlog," implemented only once a concrete requirement needs it.
+The active direction now is gameplay content, not more architecture - see [Next steps](docs/NEXT_STEPS.md)'s "Active roadmap": a manual verification pass of the save/resume flow (mostly done - one hand-edited-save gap tracked, not fixed, in the Architecture backlog), an explicit Wait command (done), then a first tactical slice (one weapon, one enemy, one hazard, one designed encounter), a floor-clear objective, and the fuller loop beyond that. Deferred architecture work with no current gameplay requirement (RNG-stream continuation after loading, save schema migration, per-definition fingerprint diagnostics, semantic save validation, a generalized hazard framework, and more) lives in that document's "Architecture backlog," implemented only once a concrete requirement needs it.
 
 ## Documentation
 
@@ -64,4 +65,4 @@ The active direction now is gameplay content, not more architecture - see [Next 
 - The enemy-phase loop, top-of-turn input rejection, and the turn's completion boundary are still Main's own code rather than `TurnResolver`'s - a deliberate choice (moving them would relocate complexity, not reduce it), not an oversight.
 - RNG-stream continuation after loading is out of scope: Continue restores committed state, not an in-flight random sequence.
 - No persistent progression or difficulty modifiers yet (roadmap item 5).
-- Closed-door blocking, floor transitions/objectives, an explicit wait command, and obstacle-aware navigation remain open (roadmap items 2 and 4).
+- Closed-door blocking, floor transitions/objectives, and obstacle-aware navigation remain open (roadmap item 4).
