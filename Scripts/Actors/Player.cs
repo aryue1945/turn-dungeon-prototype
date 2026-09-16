@@ -123,6 +123,15 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 		_state.MoveBy((int)direction.X, (int)direction.Y);
 	}
 
+	// ICombatant.Knockback: identical mechanics to Move, kept as a separate
+	// method since it is driven by AttackResolver rather than the player's
+	// own input and carries no facing change.
+	public void Knockback(Vector2 direction)
+	{
+		Position += direction * TileSize;
+		_state.MoveBy((int)direction.X, (int)direction.Y);
+	}
+
 	// Adopts a state rebuilt by GameSnapshotRestore.RestoreActor for
 	// milestone-4 Continue, in place of the fresh ActorState/weapon/tool
 	// PlaceAt/EquipWeapon would otherwise set up. The caller must already

@@ -9,7 +9,7 @@ Reviewed against main `c4a5d2e99236852b8374e8c733f0ac521deeff20` on 2026-09-16 (
 - Move with arrow keys or WASD. A directional action advances the turn, including a blocked move.
 - Player action priority is attack, then dig, then movement or wall bump.
 - Enemies act sequentially after the player, across the entire floor.
-- Choose Basic Sword or Long Sword before starting: Up/Down then Enter/Space, number keys 1/2, or mouse. The first button receives focus.
+- Choose Basic Sword, Long Sword, or War Hammer before starting: Up/Down then Enter/Space, number keys 1/2/3, or mouse. The first button receives focus. War Hammer pushes a surviving hit target one cell back if the destination is walkable and unoccupied (a blocked push still deals damage).
 - The player also carries a Basic Shovel. Digging damages adjacent destructible terrain without moving; destroyed walls become floor.
 - Doors are walkable before opening. Player or enemy occupancy sets `IsOpen`; the door graphic disappears.
 - Defeat all enemies to win; player death ends the game. Restart (button or the "R" key) starts a fresh run immediately, bypassing the Continue/New Run choice for the run just finished.

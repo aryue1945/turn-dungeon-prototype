@@ -122,6 +122,10 @@ public sealed class EnemyMovementBehaviorTests
 		public void TakeDamage(int damage)
 		{
 		}
+
+		public void Knockback(Vector2 direction)
+		{
+		}
 	}
 
 	private sealed class FakeMovementHost : IEnemyMovementHost

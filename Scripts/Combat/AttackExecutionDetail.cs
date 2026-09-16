@@ -14,18 +14,26 @@ public sealed class AttackHitDetail
 	public int RemainingHealth { get; }
 	public bool Defeated { get; }
 
+	// Set only when this attack has knockback, the target survived, and the
+	// push actually happened (the destination was walkable and unoccupied -
+	// a blocked push still deals damage but leaves this null, per the War
+	// Hammer spec).
+	public GridPosition? KnockedBackTo { get; }
+
 	public AttackHitDetail(
 		Guid targetInstanceId,
 		GridPosition position,
 		int damage,
 		int remainingHealth,
-		bool defeated)
+		bool defeated,
+		GridPosition? knockedBackTo = null)
 	{
 		TargetInstanceId = targetInstanceId;
 		Position = position;
 		Damage = damage;
 		RemainingHealth = remainingHealth;
 		Defeated = defeated;
+		KnockedBackTo = knockedBackTo;
 	}
 }
 

@@ -155,6 +155,102 @@ public sealed class WeaponAttackTests
 	}
 
 	[Test]
+	public void WarHammer_PushesSurvivingTargetOneCellBack()
+	{
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(1, 0));
+
+		AttackTurnResult result = AttackResolver.TryAttack(
+			player,
+			Vector2.Right,
+			new AttackState(WeaponDefinitions.WarHammer.PrimaryAttack),
+			new List<ICombatant> { player, enemy },
+			_ => false,
+			out AttackExecutionDetail detail
+		);
+
+		Assert.That(result, Is.EqualTo(AttackTurnResult.Attacked));
+		Assert.That(enemy.Health, Is.EqualTo(2));
+		Assert.That(enemy.GridPosition, Is.EqualTo(new GridPosition(2, 0)));
+		Assert.That(detail.Hits[0].KnockedBackTo, Is.EqualTo(new GridPosition(2, 0)));
+	}
+
+	[Test]
+	public void WarHammer_BlockedByWallStillDamagesButDoesNotMove()
+	{
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(1, 0));
+		HashSet<GridPosition> walls = new() { new GridPosition(2, 0) };
+
+		AttackResolver.TryAttack(
+			player,
+			Vector2.Right,
+			new AttackState(WeaponDefinitions.WarHammer.PrimaryAttack),
+			new List<ICombatant> { player, enemy },
+			walls.Contains,
+			out AttackExecutionDetail detail
+		);
+
+		Assert.That(enemy.Health, Is.EqualTo(2), "Damage still applies even when the push is blocked.");
+		Assert.That(enemy.GridPosition, Is.EqualTo(new GridPosition(1, 0)), "A wall behind the target blocks the push.");
+		Assert.That(detail.Hits[0].KnockedBackTo, Is.Null);
+	}
+
+	[Test]
+	public void WarHammer_BlockedByAnotherActorStillDamagesButDoesNotMove()
+	{
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(1, 0));
+		FakeCombatant bystander = EnemyAt(new GridPosition(2, 0));
+
+		AttackResolver.TryAttack(
+			player,
+			Vector2.Right,
+			new AttackState(WeaponDefinitions.WarHammer.PrimaryAttack),
+			new List<ICombatant> { player, enemy, bystander },
+			_ => false,
+			out AttackExecutionDetail detail
+		);
+
+		Assert.That(enemy.Health, Is.EqualTo(2));
+		Assert.That(enemy.GridPosition, Is.EqualTo(new GridPosition(1, 0)));
+		Assert.That(detail.Hits[0].KnockedBackTo, Is.Null);
+	}
+
+	[Test]
+	public void WarHammer_DefeatedTargetIsNotKnockedBack()
+	{
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(1, 0));
+		enemy.SetHealth(1);
+
+		AttackResolver.TryAttack(
+			player,
+			Vector2.Right,
+			new AttackState(WeaponDefinitions.WarHammer.PrimaryAttack),
+			new List<ICombatant> { player, enemy },
+			_ => false,
+			out AttackExecutionDetail detail
+		);
+
+		Assert.That(enemy.Health, Is.EqualTo(0));
+		Assert.That(enemy.GridPosition, Is.EqualTo(new GridPosition(1, 0)));
+		Assert.That(detail.Hits[0].Defeated, Is.True);
+		Assert.That(detail.Hits[0].KnockedBackTo, Is.Null);
+	}
+
+	[Test]
+	public void BasicSword_DoesNotKnockBackTheTarget()
+	{
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(1, 0));
+
+		UseWeapon(WeaponDefinitions.BasicSword, player, new[] { enemy });
+
+		Assert.That(enemy.GridPosition, Is.EqualTo(new GridPosition(1, 0)));
+	}
+
+	[Test]
 	public void LongSword_RotatesPatternWithRequestedDirection()
 	{
 		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
@@ -211,7 +307,7 @@ public sealed class WeaponAttackTests
 	private sealed class FakeCombatant : ICombatant
 	{
 		public System.Guid InstanceId { get; } = System.Guid.NewGuid();
-		public GridPosition GridPosition { get; }
+		public GridPosition GridPosition { get; private set; }
 		public CombatFaction Faction { get; }
 		public int Health { get; private set; } = 3;
 		public bool IsAlive => Health > 0;
@@ -220,6 +316,14 @@ public sealed class WeaponAttackTests
 		{
 			GridPosition = gridPosition;
 			Faction = faction;
+		}
+
+		public void Knockback(Vector2 direction)
+		{
+			GridPosition = new GridPosition(
+				GridPosition.X + (int)direction.X,
+				GridPosition.Y + (int)direction.Y
+			);
 		}
 
 		public void TakeDamage(int damage)
