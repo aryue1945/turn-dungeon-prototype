@@ -16,6 +16,12 @@ public sealed class CellSnapshot
 	public int ConnectedZoneA { get; }
 	public int ConnectedZoneB { get; }
 
+	// Meaningless unless Terrain is SpikeTrap. Real, active gameplay state
+	// (not disabled/experimental terrain), so unlike the regrow timer this
+	// is captured/restored exactly (NEXT_STEPS roadmap item 3).
+	public SpikeTrapPhase SpikeTrapPhase { get; }
+	public int SpikeTrapPhaseTurnsRemaining { get; }
+
 	// Derived inspection data only, computed at capture time from the
 	// authoritative Player/Enemies lists below - never a second source of
 	// truth for where an actor is (docs/SAVE_AND_DEBUG_HISTORY.md). Kept as
@@ -32,6 +38,8 @@ public sealed class CellSnapshot
 		int zoneId,
 		int connectedZoneA,
 		int connectedZoneB,
+		SpikeTrapPhase spikeTrapPhase,
+		int spikeTrapPhaseTurnsRemaining,
 		Guid[] actorInstanceIds)
 	{
 		Position = position;
@@ -41,6 +49,8 @@ public sealed class CellSnapshot
 		ZoneId = zoneId;
 		ConnectedZoneA = connectedZoneA;
 		ConnectedZoneB = connectedZoneB;
+		SpikeTrapPhase = spikeTrapPhase;
+		SpikeTrapPhaseTurnsRemaining = spikeTrapPhaseTurnsRemaining;
 		ActorInstanceIds = actorInstanceIds ?? Array.Empty<Guid>();
 	}
 }
@@ -199,6 +209,8 @@ public sealed class GameSnapshot
 					cell.ZoneId,
 					cell.ConnectedZoneA,
 					cell.ConnectedZoneB,
+					cell.SpikeTrapPhase,
+					cell.SpikeTrapPhaseTurnsRemaining,
 					actorIds?.ToArray() ?? Array.Empty<Guid>()
 				);
 			}

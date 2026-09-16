@@ -73,7 +73,13 @@ public sealed class DungeonRenderer
 		GridPosition position = new(x, y);
 
 		if (cell.IsWalkable)
-			Track(position, CreateFloor(x, y));
+		{
+			Node2D floor = CreateFloor(x, y);
+			Track(position, floor);
+
+			if (cell.Terrain.Kind == TerrainKind.SpikeTrap && floor is Sprite2D floorSprite)
+				floorSprite.Modulate = GetSpikeTrapModulate(cell.SpikeTrapPhase);
+		}
 
 		if (cell.Terrain.Kind == TerrainKind.SolidWall ||
 			cell.Terrain.Kind == TerrainKind.BreakableWall ||
@@ -153,6 +159,20 @@ public sealed class DungeonRenderer
 			TerrainKind.TreeWall => new Color(0.55f, 0.85f, 0.45f),
 			TerrainKind.GrowingWall => new Color(0.62f, 0.55f, 0.95f),
 			_ => Colors.White
+		};
+	}
+
+	// Tints the shared floor sprite by cycle phase rather than using
+	// dedicated art (NEXT_STEPS roadmap item 3 - minimal visual for the
+	// first playable slice). RefreshCell re-applies this whenever the phase
+	// changes, since RenderCell always runs for the cell's current state.
+	private static Color GetSpikeTrapModulate(SpikeTrapPhase phase)
+	{
+		return phase switch
+		{
+			SpikeTrapPhase.Warning => Colors.Yellow,
+			SpikeTrapPhase.Active => Colors.Red,
+			_ => new Color(0.65f, 0.65f, 0.7f)
 		};
 	}
 

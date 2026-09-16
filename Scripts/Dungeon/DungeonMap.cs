@@ -13,7 +13,18 @@ public enum TerrainKind
 	GrowingWall,
 	Door,
 	Fire,
-	Ice
+	Ice,
+	SpikeTrap
+}
+
+// A spike trap cell's cycle (NEXT_STEPS roadmap item 3): Safe -> Warning
+// (telegraphs the coming Active phase) -> Active (damages whoever is
+// standing on it) -> back to Safe. Meaningless on any other terrain kind.
+public enum SpikeTrapPhase
+{
+	Safe,
+	Warning,
+	Active
 }
 
 public sealed class TerrainDefinition
@@ -106,6 +117,13 @@ public static class TerrainCatalog
 		),
 		[TerrainKind.Ice] = new(
 			TerrainKind.Ice, "Ice", 'I', isWalkable: true
+		),
+		[TerrainKind.SpikeTrap] = new(
+			TerrainKind.SpikeTrap,
+			"Spike Trap",
+			'^',
+			isWalkable: true,
+			contactDamage: 1
 		)
 	};
 
@@ -138,6 +156,17 @@ public sealed class DungeonCell
 	public int? PendingRegrowTurns =>
 		_regrowingKind.HasValue ? _regrowTurnsRemaining : null;
 
+	// Meaningless on any terrain other than SpikeTrap. Unlike the regrow
+	// timer below, this is real per-turn state that must persist and export
+	// (NEXT_STEPS roadmap item 3), not disabled/dropped-on-restore
+	// experimental terrain.
+	public SpikeTrapPhase SpikeTrapPhase { get; private set; }
+	public int SpikeTrapPhaseTurnsRemaining { get; private set; }
+
+	private const int SpikeTrapSafeTurns = 2;
+	private const int SpikeTrapWarningTurns = 1;
+	private const int SpikeTrapActiveTurns = 1;
+
 	private TerrainKind? _regrowingKind;
 	private int _regrowTurnsRemaining;
 
@@ -154,20 +183,26 @@ public sealed class DungeonCell
 		IsOpen = false;
 		_regrowingKind = null;
 		_regrowTurnsRemaining = 0;
+		SpikeTrapPhase = SpikeTrapPhase.Safe;
+		SpikeTrapPhaseTurnsRemaining = terrainKind == TerrainKind.SpikeTrap ? SpikeTrapSafeTurns : 0;
 	}
 
 	// Sets every piece of a cell's saved state directly, for milestone-4
 	// save/resume: unlike SetTerrain, durability/IsOpen are not reset to
 	// terrain defaults, since a restored cell may be mid-damage or an
 	// already-open door. Pending regrowth is intentionally not restored -
-	// dynamic terrain is still disabled (see docs/NEXT_STEPS.md).
+	// dynamic terrain is still disabled (see docs/NEXT_STEPS.md) - but a
+	// spike trap's cycle phase/timer is restored exactly, since it is real,
+	// active gameplay state that must persist.
 	internal void RestoreState(
 		TerrainKind terrainKind,
 		int durability,
 		bool isOpen,
 		int zoneId,
 		int connectedZoneA,
-		int connectedZoneB)
+		int connectedZoneB,
+		SpikeTrapPhase spikeTrapPhase,
+		int spikeTrapPhaseTurnsRemaining)
 	{
 		Terrain = TerrainCatalog.Get(terrainKind);
 		Durability = durability;
@@ -177,6 +212,37 @@ public sealed class DungeonCell
 		ConnectedZoneB = connectedZoneB;
 		_regrowingKind = null;
 		_regrowTurnsRemaining = 0;
+		SpikeTrapPhase = spikeTrapPhase;
+		SpikeTrapPhaseTurnsRemaining = spikeTrapPhaseTurnsRemaining;
+	}
+
+	// Called once per game turn for every SpikeTrap cell (DungeonMap.
+	// TickSpikeTraps). Cycles Safe -> Warning -> Active -> Safe on a fixed
+	// schedule, independent of occupancy - unlike terrain regrowth, a spike
+	// trap's cycle is not paused by someone standing on it.
+	internal void TickSpikeTrap()
+	{
+		if (Terrain.Kind != TerrainKind.SpikeTrap)
+			return;
+
+		SpikeTrapPhaseTurnsRemaining--;
+
+		if (SpikeTrapPhaseTurnsRemaining > 0)
+			return;
+
+		SpikeTrapPhase = SpikeTrapPhase switch
+		{
+			SpikeTrapPhase.Safe => SpikeTrapPhase.Warning,
+			SpikeTrapPhase.Warning => SpikeTrapPhase.Active,
+			_ => SpikeTrapPhase.Safe
+		};
+
+		SpikeTrapPhaseTurnsRemaining = SpikeTrapPhase switch
+		{
+			SpikeTrapPhase.Safe => SpikeTrapSafeTurns,
+			SpikeTrapPhase.Warning => SpikeTrapWarningTurns,
+			_ => SpikeTrapActiveTurns
+		};
 	}
 
 	internal bool Open()
@@ -491,7 +557,7 @@ public sealed class DungeonMap
 
 		output.Append(
 			"Legend: # solid, B breakable, T tree, G growing, D door, " +
-			". floor, F fire, I ice (each cell uses two columns)"
+			". floor, F fire, I ice, ^ spike trap (each cell uses two columns)"
 		);
 
 		foreach (DungeonZone zone in Zones)
@@ -527,7 +593,9 @@ public sealed class DungeonMap
 		bool isOpen,
 		int zoneId,
 		int connectedZoneA,
-		int connectedZoneB)
+		int connectedZoneB,
+		SpikeTrapPhase spikeTrapPhase,
+		int spikeTrapPhaseTurnsRemaining)
 	{
 		DungeonCell cell = GetCell(x, y) ??
 			throw new ArgumentOutOfRangeException();
@@ -538,8 +606,45 @@ public sealed class DungeonMap
 			isOpen,
 			zoneId,
 			connectedZoneA,
-			connectedZoneB
+			connectedZoneB,
+			spikeTrapPhase,
+			spikeTrapPhaseTurnsRemaining
 		);
+	}
+
+	// Advances every spike trap cell's cycle by one turn (NEXT_STEPS
+	// roadmap item 3). Call once per completed game turn, after enemy
+	// actions and before the turn's snapshot/autosave. This method only
+	// advances the cycle, it does not know about combatants - the caller
+	// damages whoever stands on an ActiveCells position and refreshes the
+	// visuals of every ChangedCells position (not just the ones that became
+	// Active - a cell leaving Active also needs its tint refreshed).
+	public (IReadOnlyList<GridPosition> ChangedCells, IReadOnlyList<GridPosition> ActiveCells) TickSpikeTraps()
+	{
+		List<GridPosition> changedCells = new();
+		List<GridPosition> activeCells = new();
+
+		for (int y = 0; y < Height; y++)
+		{
+			for (int x = 0; x < Width; x++)
+			{
+				DungeonCell cell = _cells[x, y];
+
+				if (cell.Terrain.Kind != TerrainKind.SpikeTrap)
+					continue;
+
+				SpikeTrapPhase previousPhase = cell.SpikeTrapPhase;
+				cell.TickSpikeTrap();
+
+				if (cell.SpikeTrapPhase != previousPhase)
+					changedCells.Add(cell.Position);
+
+				if (cell.SpikeTrapPhase == SpikeTrapPhase.Active)
+					activeCells.Add(cell.Position);
+			}
+		}
+
+		return (changedCells, activeCells);
 	}
 
 	internal void SetZone(int x, int y, int zoneId)
