@@ -12,8 +12,8 @@ This roadmap separates completed foundation work from planned changes. Save/resu
 - Door IsOpen state and visual removal for player/enemy occupancy; doors remain walkable before opening.
 - Keyboard weapon selection with initial focus, arrow neighbors, confirm and 1/2 shortcuts.
 - Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods.
-- 83 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, GameState, TurnResolver, enemy movement behaviors, GameSnapshot, DebugHistory, and its exporter.
-- Milestone 1 (ActorState/GameState/grid combat) is done; milestone 2 (complete-turn execution) is substantially done; milestone 3 (snapshot capture/debug history) is substantially done - see below.
+- 88 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, ActorState, GameState, TurnResolver, enemy movement behaviors, GameSnapshot, DebugHistory, its exporter, and map restore.
+- Milestone 1 (ActorState/GameState/grid combat) is done; milestone 2 (complete-turn execution) is substantially done; milestone 3 (snapshot capture/debug history) is substantially done; milestone 4 (save/resume) is started - see below.
 
 Tree/growing walls remain disabled in generation and the turn loop. Do not re-enable them incidentally. Full turns and save/load have no implementation or tests yet; debug export does now.
 
@@ -57,9 +57,13 @@ Acceptance: advancing the live game does not alter past snapshots; at turn 25 th
 
 Risks: shallow copies, transposed rows, wrong retention count, omitting the last death/win turn, treating snapshots as screenshots or replay.
 
-## 4. Current-run save/resume
+## 4. Current-run save/resume (started)
 
 Reuse snapshot data with a versioned save envelope and explicit restore mapping. Restore actual terrain, actors, equipment and intent before building fresh views. Save at setup and completed turns; keep a backup and safe file replacement. Retain persistent profile data separately when introduced later.
+
+Done: `Scripts/Game/GameSnapshotRestore.cs` - `RestoreMap(GridSnapshot, seed)` rebuilds a `DungeonMap` from saved terrain/durability/IsOpen/zone-connection data, via a new internal `DungeonMap.RestoreCell` primitive (`SetTerrain` resets durability/IsOpen to defaults, which restore must not do - a saved cell may be mid-damage or an already-open door). `DungeonMap` stays unaware of `GridSnapshot`/`CellSnapshot`; the restore orchestration lives in the Game layer, which already depends on Dungeon. Unit tested for cell-by-cell fidelity against the original map and independence from later mutation of it (`Tests/GameSnapshotRestoreTests.cs`).
+
+Remaining: restoring `ActorState`/`AttackState` from an `ActorSnapshot` (health needs `TakeDamage(MaxHealth - snapshot.Health)` since there is no direct setter; `AttackState` has no way yet to set arbitrary `IsPreparing`/`RemainingPreparationTurns`/`PreparedDirection` - `BeginPreparation` only starts a fresh preparation from `Definition.PreparationTurns`); a versioned save envelope; safe file writes (temp file, atomic replace, backup, corrupt/incompatible-version rejection); and an actual load flow in Main that bypasses `CreateDungeon`/`SpawnEnemies` and builds Player/Enemy nodes from restored data instead. RNG continuation is out of scope per the acceptance note below.
 
 Acceptance: save/load plus the next command matches uninterrupted execution; an opened door and destroyed wall stay changed; terminal status persists; corrupt/incompatible saves do not overwrite a valid run.
 
