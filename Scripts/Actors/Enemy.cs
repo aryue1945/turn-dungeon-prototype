@@ -18,6 +18,8 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	public CombatFaction Faction => CombatFaction.Enemy;
 	public AttackState Attack { get; private set; }
 
+	public Guid InstanceId => _state.InstanceId;
+	public string DefinitionId => _state.DefinitionId;
 	public GridPosition GridPosition => _state.GridPosition;
 	Vector2 IEnemyMovementHost.FacingDirection => _state.Facing;
 	bool IEnemyMovementHost.HasPreparedMove => _state.HasPreparedMove;
@@ -37,7 +39,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	{
 		Definition = definition;
 		_movementBehavior = EnemyMovementBehaviors.Create(definition.MovementBehaviorId);
-		_state = new ActorState(gridPosition, definition.Health);
+		_state = new ActorState(gridPosition, definition.Health, definition.Id);
 		Position = pixelPosition;
 		Attack = new AttackState(definition.PrimaryAttack);
 		_state.SetFacing(_movementBehavior.InitialFacingDirection);

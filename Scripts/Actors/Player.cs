@@ -1,9 +1,11 @@
 using Godot;
+using System;
 
 public partial class Player : CharacterBody2D, ICombatant
 {
 	private const float TileSize = 32.0f;
 	private const int StartingHealth = 3;
+	private const string PlayerDefinitionId = "core.player";
 
 	private Polygon2D _facingIndicator;
 
@@ -11,7 +13,7 @@ public partial class Player : CharacterBody2D, ICombatant
 	// (inherited from CharacterBody2D) is kept in sync from this and used
 	// only for rendering/camera - see PlaceAt and Move.
 	private readonly ActorState _state =
-		new(new GridPosition(0, 0), StartingHealth);
+		new(new GridPosition(0, 0), StartingHealth, PlayerDefinitionId);
 
 	[Signal]
 	public delegate void MoveRequestedEventHandler(Vector2 direction);
@@ -22,6 +24,8 @@ public partial class Player : CharacterBody2D, ICombatant
 	[Signal]
 	public delegate void DiedEventHandler();
 
+	public Guid InstanceId => _state.InstanceId;
+	public string DefinitionId => _state.DefinitionId;
 	public GridPosition GridPosition => _state.GridPosition;
 	public int Health => _state.Health;
 	public Vector2 Facing => _state.Facing;

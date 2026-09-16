@@ -12,7 +12,7 @@ This roadmap separates completed foundation work from planned changes. Save/resu
 - Door IsOpen state and visual removal for player/enemy occupancy; doors remain walkable before opening.
 - Keyboard weapon selection with initial focus, arrow neighbors, confirm and 1/2 shortcuts.
 - Stable monster definitions, reusable movement behavior IDs, and JSON data-only monster mods.
-- 38 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, and ActorState.
+- 41 test methods covering generation, weapons, digging, disabled dynamic terrain, mod loading, and ActorState.
 
 Tree/growing walls remain disabled in generation and the turn loop. Do not re-enable them incidentally. Full turns, save/load and debug export have no implementation or tests yet.
 
@@ -20,9 +20,9 @@ Tree/growing walls remain disabled in generation and the turn loop. Do not re-en
 
 Add ActorState and GameState with instance IDs, GridPosition, health, facing, equipment and attack/behavior state. Convert combat and occupancy to cells. Preserve existing monster IDs and behavior factories; add stable weapon/tool IDs.
 
-Done: `Scripts/Actors/ActorState.cs` (GridPosition, health, facing, HasPreparedMove; engine-independent, unit tested). Player and Enemy both own one as their authoritative source; `PlaceAt`/`Move`/`SetFacingDirection` (Player) and `Configure`/`TryMoveForward`/`IEnemyMovementHost` (Enemy) keep pixel Position and facing indicator rotation in sync from it. `ICombatant.GridPosition` replaced pixel `Position`; `AttackResolver`'s offset math and Main's `IsWallAt`/`OpenDoorAt`/enemy-occupancy sets/spawn-cell selection all work in `GridPosition` now. `ChasePlayerBehavior._hasPreparedMove` and Enemy's `_facingDirection` - the two pieces of private node/behavior state called out in SAVE_AND_DEBUG_HISTORY.md - are gone; both read/write ActorState through `IEnemyMovementHost`, so ChasePlayerBehavior itself is now stateless.
+Done: `Scripts/Actors/ActorState.cs` (unique `InstanceId` (Guid), required `DefinitionId`, GridPosition, health, facing, HasPreparedMove; engine-independent, unit tested). Player and Enemy both own one as their authoritative source; `PlaceAt`/`Move`/`SetFacingDirection` (Player) and `Configure`/`TryMoveForward`/`IEnemyMovementHost` (Enemy) keep pixel Position and facing indicator rotation in sync from it. `ICombatant.GridPosition` replaced pixel `Position`; `AttackResolver`'s offset math and Main's `IsWallAt`/`OpenDoorAt`/enemy-occupancy sets/spawn-cell selection all work in `GridPosition` now. `ChasePlayerBehavior._hasPreparedMove` and Enemy's `_facingDirection` are gone, both read/write ActorState through `IEnemyMovementHost`. `WeaponDefinition`/`DiggingToolDefinition` (`IEquipment`) now carry a stable `Id` (`core.basic_sword`, `core.long_sword`, `core.basic_shovel`) alongside `Name`.
 
-Remaining: add instance IDs, definition ID and equipment references to ActorState; reference `AttackState` (already a separate, capturable, non-node object - preparing flag, remaining turns, locked direction) from it; add stable weapon/tool IDs; introduce GameState.
+Remaining: reference weapon/tool ids and `AttackState` (already a separate, capturable, non-node object - preparing flag, remaining turns, locked direction) from ActorState; introduce GameState.
 
 Acceptance: rules no longer read node positions; views derive positions from state; definitions remain separate from runtime data; a slow chaser's prepared move can be captured explicitly.
 

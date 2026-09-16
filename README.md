@@ -39,11 +39,11 @@ dotnet build "New Game Project.csproj"
 dotnet test Tests/TurnDungeon.Tests.csproj
 ```
 
-The source contains 38 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading, and actor state. Full-turn and Godot input/rendering integration coverage are still missing.
+The source contains 41 NUnit test methods across generation, weapon attacks, digging, disabled dynamic terrain, monster-mod loading, and actor state. Full-turn and Godot input/rendering integration coverage are still missing.
 
 ## Architecture and next work
 
-Terrain authority is already unified. Both the player's and enemies' grid position, health, and facing now live in an authoritative `ActorState` (including the slow chaser's prepared-move flag, previously a private field), and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. Attack preparation and monster identity still live only on the Godot nodes/AttackState. Next: fold those into ActorState too, then extract a complete-turn resolver while preserving existing behavior and mod IDs.
+Terrain authority is already unified. Both the player's and enemies' unique instance id, definition id, grid position, health, and facing now live in an authoritative `ActorState` (including the slow chaser's prepared-move flag, previously a private field), and combat/occupancy (attacks, wall checks, spawn placement) run on grid coordinates rather than pixels. Weapons and the digging tool also have stable ids now. Attack preparation and equipment references still live only on the Godot nodes/AttackState. Next: fold those into ActorState too, then extract a complete-turn resolver while preserving existing behavior and mod IDs.
 
 Approved direction to implement after that foundation:
 
@@ -64,7 +64,7 @@ Save/resume and debug history are **not implemented**. Debug history is not a pr
 
 ## Current limitations
 
-- Attack preparation and monster identity remain node/AttackState-only, not yet referenced from ActorState; no instance IDs, stable weapon/tool IDs, standalone GameState, or TurnResolver.
+- Attack preparation and equipment (weapon/tool) references remain node/AttackState-only, not yet referenced from ActorState; no standalone GameState or TurnResolver.
 - A map seed does not reproduce enemy placement or guarantee the same mod roster/order.
 - No run save/load, debug-history export, persistent progression, or difficulty modifiers.
 - Closed-door blocking, floor transitions, wait, and obstacle-aware navigation remain open.

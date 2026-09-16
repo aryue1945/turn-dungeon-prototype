@@ -54,6 +54,23 @@ public sealed class DigResolverTests
 		Assert.That(WeaponDefinitions.BasicSword.Name, Is.EqualTo("Basic Sword"));
 	}
 
+	[Test]
+	public void EquipmentDefinitions_HaveStableUniqueIds()
+	{
+		Assert.That(DiggingToolDefinitions.BasicShovel.Id, Is.EqualTo("core.basic_shovel"));
+		Assert.That(WeaponDefinitions.BasicSword.Id, Is.EqualTo("core.basic_sword"));
+		Assert.That(WeaponDefinitions.LongSword.Id, Is.EqualTo("core.long_sword"));
+
+		Assert.That(
+			DiggingToolDefinitions.BasicShovel.Id,
+			Is.Not.EqualTo(WeaponDefinitions.BasicSword.Id)
+		);
+		Assert.That(
+			WeaponDefinitions.BasicSword.Id,
+			Is.Not.EqualTo(WeaponDefinitions.LongSword.Id)
+		);
+	}
+
 	private static DungeonMap Generate(int seed)
 	{
 		return new DungeonGenerator().Generate(
