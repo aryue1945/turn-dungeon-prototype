@@ -44,6 +44,7 @@ public partial class Main : Node2D
 	private DungeonMap _dungeonMap;
 	private DungeonRenderer _dungeonRenderer;
 	private GameState _gameState;
+	private DebugHistory _debugHistory;
 	private int _dungeonSeed;
 	private int _currentPlayerZoneId = -1;
 	private Camera2D _camera;
@@ -697,8 +698,10 @@ public partial class Main : Node2D
 		return combatants;
 	}
 
-	private void TakeEnemyTurns()
+	private List<EnemyActionOutcome> TakeEnemyTurns()
 	{
+		List<EnemyActionOutcome> outcomes = new();
+
 		foreach (Enemy enemy in _enemies)
 		{
 			if (!IsEnemyActive(enemy))
@@ -716,10 +719,13 @@ public partial class Main : Node2D
 			);
 
 			ApplyEnemyActionOutcome(enemy, outcome);
+			outcomes.Add(outcome);
 
 			if (_gameState.IsPlayerDefeated)
 				break;
 		}
+
+		return outcomes;
 	}
 
 	private void OnPlayerMoveRequested(Vector2 direction)
@@ -743,14 +749,35 @@ public partial class Main : Node2D
 		if (_gameEnded)
 		{
 			_gameState.CompleteTurn();
+			RecordTransition(direction, outcome, Array.Empty<EnemyActionOutcome>());
 			return;
 		}
 
-		TakeEnemyTurns();
+		List<EnemyActionOutcome> enemyOutcomes = TakeEnemyTurns();
 
 		RemoveDefeatedEnemies();
 		CheckForVictory();
 		_gameState.CompleteTurn();
+		RecordTransition(direction, outcome, enemyOutcomes);
+	}
+
+	// Appends one consumed turn to the debug ring, using the state after
+	// CompleteTurn so the transition's TurnNumber matches its own resulting
+	// snapshot (see docs/SAVE_AND_DEBUG_HISTORY.md's turn-25-retains-15..25
+	// example). _debugHistory only exists once a weapon is chosen, matching
+	// the guard at the top of this method.
+	private void RecordTransition(
+		Vector2 direction,
+		PlayerActionOutcome playerOutcome,
+		IReadOnlyList<EnemyActionOutcome> enemyOutcomes)
+	{
+		_debugHistory?.AppendTransition(new TurnTransition(
+			_gameState.TurnNumber,
+			direction,
+			playerOutcome,
+			enemyOutcomes,
+			GameSnapshot.Capture(_gameState)
+		));
 	}
 
 	private void CheckForVictory()
@@ -806,6 +833,11 @@ public partial class Main : Node2D
 		_weaponSelectionPanel.Visible = false;
 		_gameStarted = true;
 		_player.SetProcessUnhandledInput(true);
+
+		// The debug ring's initial state, captured after setup/weapon
+		// choice and before the first command - see
+		// docs/SAVE_AND_DEBUG_HISTORY.md.
+		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
 
 		GD.Print($"Equipped {_player.Weapon.Name}.");
 	}
