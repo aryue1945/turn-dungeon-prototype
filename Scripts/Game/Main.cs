@@ -624,6 +624,33 @@ public partial class Main : Node2D
 		}
 	}
 
+	// Enemy counterpart to ApplyPlayerActionOutcome. Idle/Prepared/Moved/
+	// Blocked need no narration (Enemy already prints health changes via
+	// TakeDamage); only the attack cases and door refresh need Main's
+	// involvement here.
+	private void ApplyEnemyActionOutcome(Enemy enemy, EnemyActionOutcome outcome)
+	{
+		switch (outcome.Kind)
+		{
+			case EnemyActionKind.Attacked:
+				GD.Print($"{enemy.Name} used {outcome.AttackName}.");
+				break;
+
+			case EnemyActionKind.Preparing:
+				GD.Print($"{enemy.Name} prepares {outcome.AttackName}.");
+				break;
+		}
+
+		if (outcome.DoorOpened)
+		{
+			_dungeonRenderer.RefreshCell(
+				_dungeonMap,
+				outcome.ResultingPosition.X,
+				outcome.ResultingPosition.Y
+			);
+		}
+	}
+
 	private bool IsEnemyActive(Enemy enemy)
 	{
 		return IsInstanceValid(enemy) &&
@@ -688,14 +715,7 @@ public partial class Main : Node2D
 				_dungeonMap
 			);
 
-			if (outcome.DoorOpened)
-			{
-				_dungeonRenderer.RefreshCell(
-					_dungeonMap,
-					outcome.ResultingPosition.X,
-					outcome.ResultingPosition.Y
-				);
-			}
+			ApplyEnemyActionOutcome(enemy, outcome);
 
 			if (_player.Health <= 0)
 				break;

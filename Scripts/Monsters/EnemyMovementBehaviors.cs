@@ -2,13 +2,49 @@ using Godot;
 using System;
 using System.Collections.Generic;
 
-// Outcome of a single forward-move attempt, shared between Enemy and every
-// movement behavior.
-public enum EnemyMoveResult
+// What one enemy's turn actually did. Idle/Prepared never touch the map;
+// Attacked/Preparing carry the attack's name for narration; Moved/Blocked
+// describe a forward-step attempt. This is the enemy-side counterpart to
+// PlayerActionOutcome (Scripts/Game/TurnResolver.cs) - same idea, scoped to
+// what movement behaviors can currently produce.
+public enum EnemyActionKind
 {
+	Idle,
+	Prepared,
 	Moved,
-	AttackAction,
+	Attacked,
+	Preparing,
 	Blocked
+}
+
+public sealed class EnemyActionResult
+{
+	public EnemyActionKind Kind { get; }
+	public string AttackName { get; }
+
+	private EnemyActionResult(EnemyActionKind kind, string attackName)
+	{
+		Kind = kind;
+		AttackName = attackName;
+	}
+
+	public static readonly EnemyActionResult Idle =
+		new(EnemyActionKind.Idle, null);
+	public static readonly EnemyActionResult Prepared =
+		new(EnemyActionKind.Prepared, null);
+	public static readonly EnemyActionResult Moved =
+		new(EnemyActionKind.Moved, null);
+	public static readonly EnemyActionResult Blocked =
+		new(EnemyActionKind.Blocked, null);
+
+	public static EnemyActionResult Attacked(string attackName) =>
+		new(EnemyActionKind.Attacked, attackName);
+
+	public static EnemyActionResult Preparing(string attackName) =>
+		new(EnemyActionKind.Preparing, attackName);
+
+	public bool IsAttackAction =>
+		Kind == EnemyActionKind.Attacked || Kind == EnemyActionKind.Preparing;
 }
 
 // The primitives a movement behavior needs from the Enemy it drives, without
@@ -25,7 +61,7 @@ public interface IEnemyMovementHost
 	void TurnLeft();
 	void TurnRight();
 
-	EnemyMoveResult TryMoveForward(
+	EnemyActionResult TryMoveForward(
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants);
 }
@@ -39,9 +75,9 @@ public interface IEnemyMovementBehavior
 	Vector2 InitialFacingDirection { get; }
 	bool ShowsFacingIndicatorInitially { get; }
 
-	void TakeTurn(
+	EnemyActionResult TakeTurn(
 		IEnemyMovementHost host,
-		Player player,
+		ICombatant player,
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants);
 }
@@ -59,9 +95,9 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 	public Vector2 InitialFacingDirection => Vector2.Down;
 	public bool ShowsFacingIndicatorInitially => false;
 
-	public void TakeTurn(
+	public EnemyActionResult TakeTurn(
 		IEnemyMovementHost host,
-		Player player,
+		ICombatant player,
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
@@ -70,13 +106,15 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 			// Preparing is the entire action for this turn.
 			PrepareMove(host, player.GridPosition);
 			host.SetHasPreparedMove(true);
-			return;
+			return EnemyActionResult.Prepared;
 		}
 
 		// Moving uses the direction locked during the previous turn.
-		host.TryMoveForward(occupiedEnemyPositions, combatants);
+		EnemyActionResult result =
+			host.TryMoveForward(occupiedEnemyPositions, combatants);
 		host.SetHasPreparedMove(false);
 		host.SetFacingIndicatorVisible(false);
+		return result;
 	}
 
 	private static void PrepareMove(
@@ -105,17 +143,19 @@ public sealed class PatrolBehavior : IEnemyMovementBehavior
 	public Vector2 InitialFacingDirection => Vector2.Right;
 	public bool ShowsFacingIndicatorInitially => true;
 
-	public void TakeTurn(
+	public EnemyActionResult TakeTurn(
 		IEnemyMovementHost host,
-		Player player,
+		ICombatant player,
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
-		EnemyMoveResult result =
+		EnemyActionResult result =
 			host.TryMoveForward(occupiedEnemyPositions, combatants);
 
-		if (result == EnemyMoveResult.Blocked)
+		if (result.Kind == EnemyActionKind.Blocked)
 			host.TurnRight();
+
+		return result;
 	}
 }
 
@@ -134,24 +174,26 @@ public sealed class TurningWalkerBehavior : IEnemyMovementBehavior
 	public Vector2 InitialFacingDirection => Vector2.Down;
 	public bool ShowsFacingIndicatorInitially => true;
 
-	public void TakeTurn(
+	public EnemyActionResult TakeTurn(
 		IEnemyMovementHost host,
-		Player player,
+		ICombatant player,
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
-		EnemyMoveResult result =
+		EnemyActionResult result =
 			host.TryMoveForward(occupiedEnemyPositions, combatants);
 
 		// An attack consumes the entire beat.
-		if (result == EnemyMoveResult.AttackAction)
-			return;
+		if (result.IsAttackAction)
+			return result;
 
 		// Otherwise turning is the second action, even if movement was blocked.
 		if (_turnRight)
 			host.TurnRight();
 		else
 			host.TurnLeft();
+
+		return result;
 	}
 }
 
@@ -161,12 +203,13 @@ public sealed class StationaryBehavior : IEnemyMovementBehavior
 	public Vector2 InitialFacingDirection => Vector2.Down;
 	public bool ShowsFacingIndicatorInitially => false;
 
-	public void TakeTurn(
+	public EnemyActionResult TakeTurn(
 		IEnemyMovementHost host,
-		Player player,
+		ICombatant player,
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
+		return EnemyActionResult.Idle;
 	}
 }
 
