@@ -91,7 +91,8 @@ public sealed class RunSaveSerializerTests
 		RunSaveEnvelope envelope = new(
 			schemaVersion: 999,
 			seed: 1,
-			snapshot: GameSnapshot.Capture(state)
+			snapshot: GameSnapshot.Capture(state),
+			savedAtUtc: System.DateTime.UtcNow
 		);
 
 		RunSaveLoadOutcome outcome = RunSaveSerializer.FromJson(RunSaveSerializer.ToJson(envelope));
