@@ -17,11 +17,13 @@ public partial class Main : Node2D
 
 	private readonly RandomNumberGenerator _random = new();
 	private readonly List<Enemy> _enemies = new();
+	private readonly Dictionary<string, Texture2D> _weaponTextures = new();
 	private List<MonsterDefinition> _spawnPool = new();
 
 	private Player _player;
 	private Label _healthLabel;
 	private Label _weaponLabel;
+	private TextureRect _weaponIcon;
 	private Label _toolLabel;
 	private Button _exportHistoryButton;
 	private Label _statusLabel;
@@ -111,6 +113,12 @@ public partial class Main : Node2D
 		_doorTexture = GD.Load<Texture2D>(
 			"res://Art/Tiles/prison_cell_door.png"
 		);
+
+		foreach (WeaponDefinition weapon in WeaponDefinitions.All)
+		{
+			if (!string.IsNullOrWhiteSpace(weapon.SpritePath))
+				_weaponTextures[weapon.Id] = GD.Load<Texture2D>(weapon.SpritePath);
+		}
 
 		_runId = Guid.NewGuid();
 		_random.Randomize();
@@ -496,13 +504,25 @@ public partial class Main : Node2D
 		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
 		hud.AddChild(_healthLabel);
 
+		HBoxContainer weaponRow = new();
+		weaponRow.AddThemeConstantOverride("separation", 6);
+		hud.AddChild(weaponRow);
+
+		_weaponIcon = new TextureRect
+		{
+			CustomMinimumSize = new Vector2(24, 24),
+			StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
+			Visible = false
+		};
+		weaponRow.AddChild(_weaponIcon);
+
 		_weaponLabel = new Label
 		{
 			Text = "Weapon: not selected"
 		};
 		_weaponLabel.AddThemeFontSizeOverride("font_size", 16);
 		_weaponLabel.AddThemeColorOverride("font_color", Colors.White);
-		hud.AddChild(_weaponLabel);
+		weaponRow.AddChild(_weaponLabel);
 
 		_toolLabel = new Label
 		{
@@ -722,7 +742,9 @@ public partial class Main : Node2D
 		Button basicSwordButton = new()
 		{
 			CustomMinimumSize = new Vector2(208, 44),
-			Text = "[1] Basic Sword"
+			Text = "[1] Basic Sword",
+			Icon = GetWeaponIcon(WeaponDefinitions.BasicSword),
+			ExpandIcon = false
 		};
 		basicSwordButton.Pressed += OnBasicSwordSelected;
 		selectionBox.AddChild(basicSwordButton);
@@ -731,7 +753,9 @@ public partial class Main : Node2D
 		Button longSwordButton = new()
 		{
 			CustomMinimumSize = new Vector2(208, 44),
-			Text = "[2] Long Sword"
+			Text = "[2] Long Sword",
+			Icon = GetWeaponIcon(WeaponDefinitions.LongSword),
+			ExpandIcon = false
 		};
 		longSwordButton.Pressed += OnLongSwordSelected;
 		selectionBox.AddChild(longSwordButton);
@@ -739,7 +763,9 @@ public partial class Main : Node2D
 		Button warHammerButton = new()
 		{
 			CustomMinimumSize = new Vector2(208, 44),
-			Text = "[3] War Hammer"
+			Text = "[3] War Hammer",
+			Icon = GetWeaponIcon(WeaponDefinitions.WarHammer),
+			ExpandIcon = false
 		};
 		warHammerButton.Pressed += OnWarHammerSelected;
 		selectionBox.AddChild(warHammerButton);
@@ -770,6 +796,23 @@ public partial class Main : Node2D
 	{
 		_weaponSelectionPanel.Visible = true;
 		_basicSwordButton.GrabFocus();
+	}
+
+	private Texture2D GetWeaponIcon(WeaponDefinition weapon)
+	{
+		return _weaponTextures.TryGetValue(weapon.Id, out Texture2D texture) ? texture : null;
+	}
+
+	// Shared by every path that equips/restores a weapon (SelectWeapon,
+	// RestoreRun, StartFixedEncounter) so the HUD label and icon can never
+	// drift apart or be updated in only one of them.
+	private void UpdateWeaponDisplay(WeaponDefinition weapon)
+	{
+		_weaponLabel.Text = $"Weapon: {weapon.Name}";
+
+		Texture2D icon = GetWeaponIcon(weapon);
+		_weaponIcon.Texture = icon;
+		_weaponIcon.Visible = icon != null;
 	}
 
 	// Shown at boot instead of jumping straight into weapon selection, per
@@ -1303,7 +1346,7 @@ public partial class Main : Node2D
 		_currentPlayerZoneId = -1;
 		UpdatePlayerZone();
 
-		_weaponLabel.Text = $"Weapon: {weapon.Name}";
+		UpdateWeaponDisplay(weapon);
 		_toolLabel.Text = $"Tool: {tool.Name}";
 		_healthLabel.Text = $"HP: {_player.Health}";
 
@@ -1646,7 +1689,7 @@ public partial class Main : Node2D
 	private void SelectWeapon(WeaponDefinition weapon)
 	{
 		_player.EquipWeapon(weapon);
-		_weaponLabel.Text = $"Weapon: {_player.Weapon.Name}";
+		UpdateWeaponDisplay(_player.Weapon);
 		_weaponSelectionPanel.Visible = false;
 		_gameStarted = true;
 		_player.SetProcessUnhandledInput(true);
