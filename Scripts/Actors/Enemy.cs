@@ -18,6 +18,9 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	public CombatFaction Faction => CombatFaction.Enemy;
 	public AttackState Attack { get; private set; }
 
+	// GameState holds this reference directly rather than copying fields, so
+	// it always sees this enemy's current grid position/health/etc.
+	public ActorState State => _state;
 	public Guid InstanceId => _state.InstanceId;
 	public string DefinitionId => _state.DefinitionId;
 	public GridPosition GridPosition => _state.GridPosition;
