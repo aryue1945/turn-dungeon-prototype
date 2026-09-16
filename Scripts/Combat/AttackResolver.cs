@@ -9,8 +9,11 @@ public static class AttackResolver
 		Vector2 requestedDirection,
 		AttackState attackState,
 		IReadOnlyList<ICombatant> combatants,
-		Func<GridPosition, bool> isWallAt)
+		Func<GridPosition, bool> isWallAt,
+		out AttackExecutionDetail detail)
 	{
+		detail = null;
+
 		if (attackState.IsPreparing)
 		{
 			if (!attackState.AdvancePreparation())
@@ -19,7 +22,7 @@ public static class AttackResolver
 			Vector2 preparedDirection =
 				attackState.PreparedDirection;
 
-			ExecuteAttack(
+			detail = ExecuteAttack(
 				attacker,
 				preparedDirection,
 				attackState.Definition,
@@ -53,7 +56,7 @@ public static class AttackResolver
 			return AttackTurnResult.Preparing;
 		}
 
-		ExecuteAttack(
+		detail = ExecuteAttack(
 			attacker,
 			requestedDirection,
 			definition,
@@ -98,7 +101,7 @@ public static class AttackResolver
 		return false;
 	}
 
-	private static void ExecuteAttack(
+	private static AttackExecutionDetail ExecuteAttack(
 		ICombatant attacker,
 		Vector2 direction,
 		AttackDefinition definition,
@@ -106,6 +109,8 @@ public static class AttackResolver
 		Func<GridPosition, bool> isWallAt)
 	{
 		HashSet<ICombatant> hitTargets = new();
+		List<GridPosition> affectedCells = new();
+		List<AttackHitDetail> hits = new();
 
 		foreach (AttackOffset offset in definition.AttackOffsets)
 		{
@@ -117,6 +122,8 @@ public static class AttackResolver
 
 			if (definition.StopsAtWalls && isWallAt(position))
 				break;
+
+			affectedCells.Add(position);
 
 			ICombatant target = FindCombatantAt(
 				position,
@@ -133,10 +140,19 @@ public static class AttackResolver
 
 			target.TakeDamage(definition.Damage);
 			hitTargets.Add(target);
+			hits.Add(new AttackHitDetail(
+				target.InstanceId,
+				position,
+				definition.Damage,
+				target.Health,
+				!target.IsAlive
+			));
 
 			if (hitTargets.Count >= definition.MaxTargets)
 				break;
 		}
+
+		return new AttackExecutionDetail(attacker.InstanceId, affectedCells, hits);
 	}
 
 	private static GridPosition GetPatternPosition(

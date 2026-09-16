@@ -1,4 +1,5 @@
 using Godot;
+using System;
 
 public readonly struct AttackOffset
 {
@@ -33,9 +34,11 @@ public enum CombatFaction
 
 public interface ICombatant
 {
+	Guid InstanceId { get; }
 	GridPosition GridPosition { get; }
 	CombatFaction Faction { get; }
 	bool IsAlive { get; }
+	int Health { get; }
 
 	void TakeDamage(int damage);
 }

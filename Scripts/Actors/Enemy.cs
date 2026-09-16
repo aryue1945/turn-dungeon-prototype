@@ -24,6 +24,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	public Guid InstanceId => _state.InstanceId;
 	public string DefinitionId => _state.DefinitionId;
 	public GridPosition GridPosition => _state.GridPosition;
+	public int Health => _state.Health;
 	Vector2 IEnemyMovementHost.FacingDirection => _state.Facing;
 	bool IEnemyMovementHost.HasPreparedMove => _state.HasPreparedMove;
 
@@ -150,11 +151,12 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 				facing,
 				Attack,
 				combatants,
-				_isWallAt
+				_isWallAt,
+				out AttackExecutionDetail attackDetail
 			);
 
 		if (attackResult == AttackTurnResult.Attacked)
-			return EnemyActionResult.Attacked(Attack.Definition.Name);
+			return EnemyActionResult.Attacked(Attack.Definition.Name, attackDetail);
 
 		if (attackResult == AttackTurnResult.Preparing)
 			return EnemyActionResult.Preparing(Attack.Definition.Name);

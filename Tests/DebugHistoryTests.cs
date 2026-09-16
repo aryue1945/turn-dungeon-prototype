@@ -91,6 +91,57 @@ public sealed class DebugHistoryTests
 	}
 
 	[Test]
+	public void GetSnapshotBefore_AtTurn25ReturningLast5MatchesTurn20()
+	{
+		DebugHistory history = new(CreateSnapshot(turnNumber: 0));
+
+		for (int turn = 1; turn <= 25; turn++)
+			history.AppendTransition(CreateTransition(turn));
+
+		GameSnapshot before = history.GetSnapshotBefore(5);
+
+		Assert.That(before.TurnNumber, Is.EqualTo(20));
+	}
+
+	[Test]
+	public void GetSnapshotBefore_RequestingAtLeastAllRetainedReturnsBoundary()
+	{
+		DebugHistory history = new(CreateSnapshot(turnNumber: 0));
+
+		for (int turn = 1; turn <= 5; turn++)
+			history.AppendTransition(CreateTransition(turn));
+
+		Assert.That(history.GetSnapshotBefore(10), Is.SameAs(history.BoundarySnapshot));
+		Assert.That(history.GetSnapshotBefore(5), Is.SameAs(history.BoundarySnapshot));
+	}
+
+	[Test]
+	public void GetLastTransitions_AtTurn25ReturningLast5IsTurns21Through25()
+	{
+		DebugHistory history = new(CreateSnapshot(turnNumber: 0));
+
+		for (int turn = 1; turn <= 25; turn++)
+			history.AppendTransition(CreateTransition(turn));
+
+		List<int> turnNumbers = new();
+		foreach (TurnTransition transition in history.GetLastTransitions(5))
+			turnNumbers.Add(transition.TurnNumber);
+
+		Assert.That(turnNumbers, Is.EqualTo(new List<int> { 21, 22, 23, 24, 25 }));
+	}
+
+	[Test]
+	public void GetLastTransitions_RequestingMoreThanRetainedReturnsAllOfThem()
+	{
+		DebugHistory history = new(CreateSnapshot(turnNumber: 0));
+
+		for (int turn = 1; turn <= 3; turn++)
+			history.AppendTransition(CreateTransition(turn));
+
+		Assert.That(history.GetLastTransitions(10), Has.Count.EqualTo(3));
+	}
+
+	[Test]
 	public void Reset_ClearsTransitionsAndSetsNewBoundary()
 	{
 		DebugHistory history = new(CreateSnapshot(turnNumber: 0));

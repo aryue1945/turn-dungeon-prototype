@@ -33,44 +33,57 @@ public enum PlayerActionKind
 public sealed class PlayerActionOutcome
 {
 	public PlayerActionKind Kind { get; }
-	public GridPosition TargetCell { get; }
+
+	// Null for Attacked/Preparing - a single cell cannot describe a
+	// multi-cell attack pattern, and (0,0) previously stood in for "not
+	// applicable" indistinguishably from a real cell. Use AttackDetail's
+	// AffectedCells for those kinds instead.
+	public GridPosition? TargetCell { get; }
 	public string AttackName { get; }
 	public int RemainingDurability { get; }
 	public bool DoorOpened { get; }
 
+	// Set only for Attacked - who attacked, every cell the attack's pattern
+	// swept, and each target actually hit (docs/SAVE_AND_DEBUG_HISTORY.md).
+	public AttackExecutionDetail AttackDetail { get; }
+
 	private PlayerActionOutcome(
 		PlayerActionKind kind,
-		GridPosition targetCell,
+		GridPosition? targetCell,
 		string attackName,
 		int remainingDurability,
-		bool doorOpened)
+		bool doorOpened,
+		AttackExecutionDetail attackDetail)
 	{
 		Kind = kind;
 		TargetCell = targetCell;
 		AttackName = attackName;
 		RemainingDurability = remainingDurability;
 		DoorOpened = doorOpened;
+		AttackDetail = attackDetail;
 	}
 
-	public static PlayerActionOutcome Attacked(string attackName) =>
-		new(PlayerActionKind.Attacked, default, attackName, 0, false);
+	public static PlayerActionOutcome Attacked(
+		string attackName,
+		AttackExecutionDetail attackDetail) =>
+		new(PlayerActionKind.Attacked, null, attackName, 0, false, attackDetail);
 
 	public static PlayerActionOutcome Preparing(string attackName) =>
-		new(PlayerActionKind.Preparing, default, attackName, 0, false);
+		new(PlayerActionKind.Preparing, null, attackName, 0, false, null);
 
 	public static PlayerActionOutcome TerrainDug(
 		GridPosition targetCell,
 		int remainingDurability) =>
-		new(PlayerActionKind.TerrainDug, targetCell, null, remainingDurability, false);
+		new(PlayerActionKind.TerrainDug, targetCell, null, remainingDurability, false, null);
 
 	public static PlayerActionOutcome TerrainDestroyed(GridPosition targetCell) =>
-		new(PlayerActionKind.TerrainDestroyed, targetCell, null, 0, false);
+		new(PlayerActionKind.TerrainDestroyed, targetCell, null, 0, false, null);
 
 	public static PlayerActionOutcome Moved(GridPosition targetCell, bool doorOpened) =>
-		new(PlayerActionKind.Moved, targetCell, null, 0, doorOpened);
+		new(PlayerActionKind.Moved, targetCell, null, 0, doorOpened, null);
 
 	public static PlayerActionOutcome Blocked(GridPosition targetCell) =>
-		new(PlayerActionKind.Blocked, targetCell, null, 0, false);
+		new(PlayerActionKind.Blocked, targetCell, null, 0, false, null);
 }
 
 // What one enemy's turn did (from its EnemyActionResult - see
@@ -79,20 +92,28 @@ public sealed class PlayerActionOutcome
 // whether to refresh that cell's rendering.
 public sealed class EnemyActionOutcome
 {
+	// Which enemy this outcome belongs to - previously only implied by list
+	// position, which the debug export cannot reconstruct on its own
+	// (docs/SAVE_AND_DEBUG_HISTORY.md).
+	public Guid ActorInstanceId { get; }
 	public EnemyActionKind Kind { get; }
 	public string AttackName { get; }
 	public GridPosition ResultingPosition { get; }
 	public bool DoorOpened { get; }
+	public AttackExecutionDetail AttackDetail { get; }
 
 	public EnemyActionOutcome(
+		Guid actorInstanceId,
 		EnemyActionResult actionResult,
 		GridPosition resultingPosition,
 		bool doorOpened)
 	{
+		ActorInstanceId = actorInstanceId;
 		Kind = actionResult.Kind;
 		AttackName = actionResult.AttackName;
 		ResultingPosition = resultingPosition;
 		DoorOpened = doorOpened;
+		AttackDetail = actionResult.AttackDetail;
 	}
 }
 
@@ -121,11 +142,12 @@ public static class TurnResolver
 			direction,
 			player.Attack,
 			combatants,
-			isWallAt
+			isWallAt,
+			out AttackExecutionDetail attackDetail
 		);
 
 		if (attackResult == AttackTurnResult.Attacked)
-			return PlayerActionOutcome.Attacked(player.Attack.Definition.Name);
+			return PlayerActionOutcome.Attacked(player.Attack.Definition.Name, attackDetail);
 
 		if (attackResult == AttackTurnResult.Preparing)
 			return PlayerActionOutcome.Preparing(player.Attack.Definition.Name);
@@ -167,6 +189,11 @@ public static class TurnResolver
 			enemy.GridPosition.Y
 		);
 
-		return new EnemyActionOutcome(actionResult, enemy.GridPosition, doorOpened);
+		return new EnemyActionOutcome(
+			enemy.InstanceId,
+			actionResult,
+			enemy.GridPosition,
+			doorOpened
+		);
 	}
 }

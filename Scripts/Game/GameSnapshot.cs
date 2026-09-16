@@ -16,6 +16,14 @@ public sealed class CellSnapshot
 	public int ConnectedZoneA { get; }
 	public int ConnectedZoneB { get; }
 
+	// Derived inspection data only, computed at capture time from the
+	// authoritative Player/Enemies lists below - never a second source of
+	// truth for where an actor is (docs/SAVE_AND_DEBUG_HISTORY.md). Kept as
+	// the exact Guid[] the constructor takes, matching the CellSnapshot[][]
+	// precedent on GridSnapshot.Rows for System.Text.Json's parameterized-
+	// constructor binding.
+	public Guid[] ActorInstanceIds { get; }
+
 	public CellSnapshot(
 		GridPosition position,
 		TerrainKind terrain,
@@ -23,7 +31,8 @@ public sealed class CellSnapshot
 		bool isOpen,
 		int zoneId,
 		int connectedZoneA,
-		int connectedZoneB)
+		int connectedZoneB,
+		Guid[] actorInstanceIds)
 	{
 		Position = position;
 		Terrain = terrain;
@@ -32,6 +41,7 @@ public sealed class CellSnapshot
 		ZoneId = zoneId;
 		ConnectedZoneA = connectedZoneA;
 		ConnectedZoneB = connectedZoneB;
+		ActorInstanceIds = actorInstanceIds ?? Array.Empty<Guid>();
 	}
 }
 
@@ -114,11 +124,12 @@ public sealed class ActorSnapshot
 
 // An independent, fully-copied point-in-time view of a GameState: the shared
 // snapshot contract from docs/SAVE_AND_DEBUG_HISTORY.md, scoped to what the
-// game currently has. Deferred, not yet meaningful: schema/build/run/floor
-// identity beyond TurnNumber/Status (no run-id or floor concept exists
-// yet), generation request/seed beyond Map.Seed, content fingerprints, and
-// per-cell actor-id lists (a derived view the spec calls optional - the
-// actor list here already owns positions).
+// game currently has. Per-cell actor-id lists are derived here at capture
+// time (CellSnapshot.ActorInstanceIds); Player/Enemies below remain the only
+// authoritative source of actor position. Deferred, not yet meaningful here:
+// schema/build/run/floor identity beyond TurnNumber/Status (that lives on
+// the debug export wrapper instead - see DebugHistoryExportContext) and
+// generation request/seed beyond Map.Seed.
 public sealed class GameSnapshot
 {
 	public int TurnNumber { get; }
@@ -146,17 +157,29 @@ public sealed class GameSnapshot
 		if (state == null)
 			throw new ArgumentNullException(nameof(state));
 
+		ActorSnapshot player = CaptureActor(state.Player);
+		List<ActorSnapshot> enemies = state.Enemies.Select(CaptureActor).ToList();
+
 		return new GameSnapshot(
 			state.TurnNumber,
 			state.Status,
-			CaptureGrid(state.Map),
-			CaptureActor(state.Player),
-			state.Enemies.Select(CaptureActor).ToList()
+			CaptureGrid(state.Map, player, enemies),
+			player,
+			enemies
 		);
 	}
 
-	private static GridSnapshot CaptureGrid(DungeonMap map)
+	private static GridSnapshot CaptureGrid(
+		DungeonMap map,
+		ActorSnapshot player,
+		IReadOnlyList<ActorSnapshot> enemies)
 	{
+		Dictionary<GridPosition, List<Guid>> actorIdsByPosition = new();
+		AddActorId(actorIdsByPosition, player);
+
+		foreach (ActorSnapshot enemy in enemies)
+			AddActorId(actorIdsByPosition, enemy);
+
 		CellSnapshot[][] rows = new CellSnapshot[map.Height][];
 
 		for (int y = 0; y < map.Height; y++)
@@ -166,6 +189,8 @@ public sealed class GameSnapshot
 			for (int x = 0; x < map.Width; x++)
 			{
 				DungeonCell cell = map.GetCell(x, y);
+				actorIdsByPosition.TryGetValue(cell.Position, out List<Guid> actorIds);
+
 				rows[y][x] = new CellSnapshot(
 					cell.Position,
 					cell.Terrain.Kind,
@@ -173,12 +198,26 @@ public sealed class GameSnapshot
 					cell.IsOpen,
 					cell.ZoneId,
 					cell.ConnectedZoneA,
-					cell.ConnectedZoneB
+					cell.ConnectedZoneB,
+					actorIds?.ToArray() ?? Array.Empty<Guid>()
 				);
 			}
 		}
 
 		return new GridSnapshot(map.Width, map.Height, rows);
+	}
+
+	private static void AddActorId(
+		Dictionary<GridPosition, List<Guid>> actorIdsByPosition,
+		ActorSnapshot actor)
+	{
+		if (!actorIdsByPosition.TryGetValue(actor.Position, out List<Guid> ids))
+		{
+			ids = new List<Guid>();
+			actorIdsByPosition[actor.Position] = ids;
+		}
+
+		ids.Add(actor.InstanceId);
 	}
 
 	private static ActorSnapshot CaptureActor(ActorState actor)

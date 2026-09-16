@@ -66,6 +66,42 @@ public sealed class GameSnapshotTests
 	}
 
 	[Test]
+	public void Capture_DerivesActorInstanceIdsPerCellFromPlayerAndEnemies()
+	{
+		ActorState player = CreatePlayerState();
+		ActorState enemy = CreateEnemyState();
+		GameState state = new(Generate(seed: 1), player);
+		state.AddEnemy(enemy);
+
+		GameSnapshot snapshot = GameSnapshot.Capture(state);
+
+		CellSnapshot playerCell = snapshot.Grid.GetCell(player.GridPosition.X, player.GridPosition.Y);
+		CellSnapshot enemyCell = snapshot.Grid.GetCell(enemy.GridPosition.X, enemy.GridPosition.Y);
+		CellSnapshot emptyCell = snapshot.Grid.GetCell(2, 2);
+
+		Assert.That(playerCell.ActorInstanceIds, Is.EqualTo(new[] { player.InstanceId }));
+		Assert.That(enemyCell.ActorInstanceIds, Is.EqualTo(new[] { enemy.InstanceId }));
+		Assert.That(emptyCell.ActorInstanceIds, Is.Empty);
+	}
+
+	[Test]
+	public void Capture_CellActorInstanceIdsIncludeBothActorsSharingACell()
+	{
+		ActorState player = CreatePlayerState();
+		ActorState enemy = new(player.GridPosition, maxHealth: 1, "core.test_enemy");
+		GameState state = new(Generate(seed: 1), player);
+		state.AddEnemy(enemy);
+
+		GameSnapshot snapshot = GameSnapshot.Capture(state);
+		CellSnapshot cell = snapshot.Grid.GetCell(player.GridPosition.X, player.GridPosition.Y);
+
+		Assert.That(
+			cell.ActorInstanceIds,
+			Is.EquivalentTo(new[] { player.InstanceId, enemy.InstanceId })
+		);
+	}
+
+	[Test]
 	public void Capture_CopiesAttackPreparationState()
 	{
 		ActorState player = CreatePlayerState();
