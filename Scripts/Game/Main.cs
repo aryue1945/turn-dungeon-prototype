@@ -409,80 +409,46 @@ public partial class Main : Node2D
 		return pool;
 	}
 
+	// Roster and placement come from EncounterPlanner, seeded from this
+	// run's own dungeon seed rather than Main's general-purpose _random -
+	// the same seed/config/content must always produce the same roster,
+	// order and positions (NEXT_STEPS milestone 5), which an unseeded RNG
+	// (what this used before) cannot guarantee.
 	private void SpawnEnemies()
 	{
+		List<DungeonRoom> combatRooms = _dungeonMap.Zones
+			.Where(zone => zone.Type == DungeonZoneType.Combat)
+			.Select(zone => zone.Room)
+			.ToList();
+
 		HashSet<GridPosition> occupiedCells = new()
 		{
 			_player.GridPosition
 		};
 
-		List<DungeonZone> combatZones = _dungeonMap.Zones
-			.Where(zone => zone.Type == DungeonZoneType.Combat)
-			.ToList();
+		IReadOnlyList<PlannedSpawn> plannedSpawns = EncounterPlanner.PlanSpawns(
+			_spawnPool,
+			combatRooms,
+			cell => _dungeonMap.IsWalkable(cell.X, cell.Y) && !occupiedCells.Contains(cell),
+			_dungeonSeed
+		);
 
-		if (combatZones.Count == 0 || _spawnPool.Count == 0)
-			return;
-
-		for (int i = 0; i < _spawnPool.Count; i++)
+		for (int i = 0; i < plannedSpawns.Count; i++)
 		{
-			DungeonRoom room = combatZones[i % combatZones.Count].Room;
-			GridPosition enemyCell = GetRandomSpawnCell(
-				room,
-				occupiedCells
-			);
-
-			MonsterDefinition definition = _spawnPool[i];
+			PlannedSpawn spawn = plannedSpawns[i];
 			Enemy enemy = _enemyScene.Instantiate<Enemy>();
-			enemy.Name = $"{definition.Id.Replace('.', '_')}{i + 1}";
+			enemy.Name = $"{spawn.Definition.Id.Replace('.', '_')}{i + 1}";
 			enemy.Configure(
-				definition,
-				enemyCell,
-				CellToPosition(enemyCell),
+				spawn.Definition,
+				spawn.Position,
+				CellToPosition(spawn.Position),
 				IsWallAt
 			);
 
-			occupiedCells.Add(enemyCell);
 			_enemies.Add(enemy);
 			_gameState.AddEnemy(enemy.State);
 			AddChild(enemy);
 		}
-	}
-
-	private GridPosition GetRandomSpawnCell(
-		DungeonRoom room,
-		HashSet<GridPosition> occupiedCells)
-	{
-		for (int attempt = 0; attempt < 100; attempt++)
-		{
-			GridPosition cell = new(
-				_random.RandiRange(room.X, room.Right - 1),
-				_random.RandiRange(room.Y, room.Bottom - 1)
-			);
-
-			if (_dungeonMap.IsWalkable(cell.X, cell.Y) &&
-				!occupiedCells.Contains(cell))
-			{
-				return cell;
-			}
-		}
-
-		for (int y = room.Y; y < room.Bottom; y++)
-		{
-			for (int x = room.X; x < room.Right; x++)
-			{
-				GridPosition cell = new(x, y);
-
-				if (_dungeonMap.IsWalkable(x, y) &&
-					!occupiedCells.Contains(cell))
-				{
-					return cell;
-				}
-			}
-		}
-
-		throw new InvalidOperationException(
-			"No free spawn cell exists in the selected room."
-		);
 	}
 
 	private static Control CreateFullRectRoot(CanvasLayer layer)
