@@ -44,9 +44,15 @@ public sealed class GridSnapshot
 	public int Width { get; }
 	public int Height { get; }
 
-	// Row-major cells[y][x], exposed for export/serialization - GetCell is
-	// the normal access path for code that already knows x/y.
-	public IReadOnlyList<IReadOnlyList<CellSnapshot>> Rows => _rows;
+	// Row-major cells[y][x], exposed for export/serialization (GetCell is
+	// the normal access path for code that already knows x/y). Kept as the
+	// same CellSnapshot[][] type the constructor takes - System.Text.Json's
+	// parameterized-constructor deserialization requires an exact type
+	// match between a constructor parameter and its bound property, not
+	// just an assignment-compatible one (IReadOnlyList<IReadOnlyList<T>>
+	// does not count, even though CellSnapshot[] implements
+	// IReadOnlyList<CellSnapshot>).
+	public CellSnapshot[][] Rows => _rows;
 
 	public GridSnapshot(int width, int height, CellSnapshot[][] rows)
 	{
