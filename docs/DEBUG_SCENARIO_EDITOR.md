@@ -21,12 +21,14 @@ The editor is **its own mode**, not a toggle layered over an active run. Sandbox
 
 This separation is the design, not an implementation detail. A toggle over the live run can leak: a stray edit mutates a real run, an autosave fires mid-edit, a half-edited state gets committed as the player's save. A distinct mode makes those failures structurally impossible rather than guarded against.
 
-Sandbox has two states, toggled with **F2**:
+Sandbox has two states:
 
 - **Edit** - cursor, palette, place/delete. Turns never advance. No enemy acts, no environment phase runs.
 - **Play** - normal turn resolution against the edited state. No editing.
 
-Entering Play snapshots the edited scenario. **Reset** restores that snapshot, so the same situation can be replayed immediately after watching it go wrong. Toggling back to Edit and changing something takes a fresh snapshot on the next Play.
+**Superseded by an explicit follow-up request during implementation:** rather than F-key toggles, Sandbox is reached via a **Debug** button on the startup screen (alongside Continue/New Run), and inside it a **Run** / **Reset** / **Exit** button toolbar drives the state machine - Edit shows Run, Play shows Reset, Exit is always visible. The only keyboard shortcuts left are **Esc** (in Play, drops back to Edit; in Edit, closes the placement menu if one is open; it never exits Sandbox on its own) and the **arrow keys** (cursor movement in Edit). Placement itself is a left-click on a cell, which opens a menu instead of using a palette panel plus separate place/delete keys - see Scope below.
+
+Entering Play (Run) snapshots the edited scenario. **Reset** restores that snapshot, so the same situation can be replayed immediately after watching it go wrong. Going back to Edit and changing something takes a fresh snapshot on the next Run.
 
 ### Isolation guarantees
 
@@ -38,14 +40,13 @@ Sandbox must never overwrite or advance the normal run. Three rules, in order of
 
 ## Scope (v1)
 
-- **Enter Sandbox** from the startup screen, into Edit state, with a blank room.
+- **Enter Sandbox** via the "Debug" button on the startup screen, into Edit state, with a blank room.
 - **Cursor.** Mouse hover and arrow keys both move a highlighted cell cursor.
-- **Palette.** A list of things that already exist as definitions: every `TerrainKind`, every `MonsterDefinitions.All` entry (plus loaded mods, i.e. Main's `_spawnPool`), and "player start".
-- **Place / delete.** Place the selected palette entry at the cursor; delete clears it (terrain reverts to `Floor`; an enemy is removed).
-- **F2 toggles Edit and Play.** Entering Play snapshots the scenario.
-- **Reset** restores the snapshot taken when Play began, leaving Sandbox ready to replay it.
+- **Palette and placement.** Left-clicking a cell opens a menu listing every `TerrainKind`, every `MonsterDefinitions.All` entry (plus loaded mods, i.e. Main's `_spawnPool`), "player start", and Delete. Choosing an object (other than Delete) then asks for a facing to place it with; Delete applies immediately. Delete clears the cell (terrain reverts to `Floor`; a living enemy there is removed from both `_enemies` and `GameState.Enemies`).
+- **Run** (button) enters Play, snapshotting the scenario.
+- **Reset** (button, shown in Play) restores the snapshot taken when Run was pressed, leaving Sandbox ready to replay it.
 - **Scenario save / load.** Write the current scenario to its own directory and load it back.
-- **Exit** to the startup screen.
+- **Exit** (button) returns to the startup screen.
 
 ## Non-goals (v1)
 
@@ -107,16 +108,15 @@ Use the in-memory path for Reset and the save format only for scenarios written 
 
 ### Input keys already taken
 
-`1`/`2`/`3` (weapon select), `-`/`=`/`0` (zoom), `X` (export menu), `R` (restart), `Escape` (pause), `F` (fixed encounter, to be removed), `Space` (wait), arrows + WASD (movement). `F2` is the Edit/Play toggle; the remaining function keys are free for palette or Reset bindings.
+`1`/`2`/`3` (weapon select), `-`/`=`/`0` (zoom), `X` (export menu), `R` (restart), `Escape` (pause, or Sandbox's Play->Edit/close-menu), `F` (fixed encounter, to be removed), `Space` (wait), arrows + WASD (movement). Sandbox introduces no new keybindings beyond reusing the arrow keys as its Edit-state cursor and Escape as above - entry (Debug button), Run/Reset/Exit and placement are all mouse-driven UI, per an explicit follow-up request to keep Sandbox's controls out of hidden function keys.
 
 ## Suggested PR slices
 
 Each builds, tests, and is independently reviewable, matching the slicing used for the tactical slice.
 
-1. **Sandbox mode with Edit/Play states.** Startup-screen entry, the two-state machine with the F2 toggle, the Play snapshot and Reset, the isolation guarantees (suppressed autosave, reload on exit), and a cell cursor driven by mouse and arrow keys. No editing yet - a blank room proves the mode, the states and the isolation before anything can mutate. Testable pure piece: pixel -> cell conversion.
-2. **Terrain palette and placement.** Palette UI, select an entry, place/delete terrain at the cursor, refresh the edited cell.
-3. **Actors.** Place/delete enemies from the definition list; move the player start.
-4. **Scenario save/load.** Capture to a per-scenario directory, list existing scenarios, load one back into Edit.
+1. **Sandbox mode with Edit/Play states.** Startup-screen entry (a "Debug" button), the two-state machine driven by a Run/Reset/Exit button toolbar, the Play snapshot and Reset, the isolation guarantees (suppressed autosave, reload on exit), and a cell cursor driven by mouse and arrow keys. No editing yet - a blank room proves the mode, the states and the isolation before anything can mutate. Testable pure piece: pixel -> cell conversion.
+2. **Terrain palette and placement, plus actors.** Delivered together as one click-to-place menu rather than a separate palette panel: left-click a cell to choose an object (every `TerrainKind`, "Player Start", every `MonsterDefinitions.All` entry, or Delete) and then a facing, applied on confirm; refresh the edited cell. Deleting or overwriting an occupied cell drops any living enemy there from both `_enemies` and `GameState.Enemies` explicitly.
+3. **Scenario save/load.** Capture to a per-scenario directory, list existing scenarios, load one back into Edit.
 
 ## Testing
 

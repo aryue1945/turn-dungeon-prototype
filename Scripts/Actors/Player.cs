@@ -157,6 +157,13 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 		_facingIndicator.Rotation = direction.Angle();
 	}
 
+	// Public entry point for Sandbox placement (docs/DEBUG_SCENARIO_EDITOR.md),
+	// which sets a facing without an accompanying move/input event.
+	public void SetFacing(Vector2 direction)
+	{
+		SetFacingDirection(direction);
+	}
+
 	public void TakeDamage(int damage)
 	{
 		if (Health <= 0)

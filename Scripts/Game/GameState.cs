@@ -52,6 +52,14 @@ public sealed class GameState
 		_enemies.RemoveAll(enemy => !enemy.IsAlive);
 	}
 
+	// RemoveDefeatedEnemies only drops dead actors - a still-living enemy
+	// deleted in Sandbox (docs/DEBUG_SCENARIO_EDITOR.md) has to be dropped
+	// explicitly or it keeps taking turns as an invisible actor.
+	public void RemoveEnemy(ActorState enemy)
+	{
+		_enemies.Remove(enemy);
+	}
+
 	public void CompleteTurn()
 	{
 		TurnNumber++;
