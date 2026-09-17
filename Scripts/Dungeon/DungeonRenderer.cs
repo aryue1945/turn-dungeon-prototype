@@ -209,13 +209,13 @@ public sealed class DungeonRenderer
 		{
 			Texture = _doorTexture,
 			Position = CellToPosition(x, y),
-			// Same offset wall.tscn bakes in, for the same reason: the art
-			// is 32 wide by 48 tall (a full-tile top face plus a half-tile
-			// front face), and +8 lands that top face exactly on the
-			// cell's own footprint, leaving only the front face hanging
-			// into the row below. Any other value uncovers part of the
-			// cell, which shows through as a strip of background.
-			Offset = new Vector2(0, 8),
+			// Same offset wall.tscn bakes in, so doors and walls sit on the
+			// same line. The art is 32 wide by 48 tall (a full-tile top
+			// face plus a half-tile front face); -8 rests the front face's
+			// base on the cell's own bottom edge, with the block's height
+			// rising half a tile above the cell. Settled by looking at it
+			// in-engine against the floor grid, not derived.
+			Offset = new Vector2(0, -8),
 			ZIndex = -1
 		};
 		_root.AddChild(door);
