@@ -14,6 +14,9 @@ public sealed class DungeonRenderer
 	private readonly Texture2D _wallBarsTexture;
 	private readonly Texture2D _breakableWallTexture;
 	private readonly Texture2D _doorTexture;
+	private readonly Texture2D _spikeSafeTexture;
+	private readonly Texture2D _spikeWarningTexture;
+	private readonly Texture2D _spikeActiveTexture;
 	private readonly Vector2 _origin;
 	private readonly float _tileSize;
 	private readonly Dictionary<GridPosition, List<Node2D>> _cellNodes = new();
@@ -30,6 +33,9 @@ public sealed class DungeonRenderer
 		Texture2D wallBarsTexture,
 		Texture2D breakableWallTexture,
 		Texture2D doorTexture,
+		Texture2D spikeSafeTexture,
+		Texture2D spikeWarningTexture,
+		Texture2D spikeActiveTexture,
 		Vector2 origin,
 		float tileSize)
 	{
@@ -44,6 +50,9 @@ public sealed class DungeonRenderer
 		_wallBarsTexture = wallBarsTexture;
 		_breakableWallTexture = breakableWallTexture;
 		_doorTexture = doorTexture;
+		_spikeSafeTexture = spikeSafeTexture;
+		_spikeWarningTexture = spikeWarningTexture;
+		_spikeActiveTexture = spikeActiveTexture;
 		_origin = origin;
 		_tileSize = tileSize;
 	}
@@ -61,21 +70,6 @@ public sealed class DungeonRenderer
 	{
 		ClearCell(new GridPosition(x, y));
 		RenderCell(map, x, y);
-	}
-
-	// Read-only lookup of whatever nodes RenderCell tracked for one cell
-	// (its floor sprite, wall instance, door sprite - whichever apply).
-	// Lets external code layer a Modulate override on top of the real
-	// rendered nodes without RenderCell/GetWallModulate/GetSpikeTrapModulate
-	// themselves needing to know about it - used by Main's isolated Palette
-	// Test area (docs/GAME_DESIGN.md) to preview semantic palette colors
-	// without changing this renderer's default output.
-	public IReadOnlyList<Node2D> GetCellNodes(GridPosition position)
-	{
-		if (_cellNodes.TryGetValue(position, out List<Node2D> nodes))
-			return nodes;
-
-		return new List<Node2D>();
 	}
 
 	public void Clear()
@@ -107,7 +101,7 @@ public sealed class DungeonRenderer
 			Track(position, floor);
 
 			if (cell.Terrain.Kind == TerrainKind.SpikeTrap && floor is Sprite2D floorSprite)
-				floorSprite.Modulate = GetSpikeTrapModulate(cell.SpikeTrapPhase);
+				floorSprite.Texture = GetSpikeTrapTexture(cell.SpikeTrapPhase);
 		}
 
 		if (cell.Terrain.Kind == TerrainKind.SolidWall ||
@@ -195,13 +189,17 @@ public sealed class DungeonRenderer
 	// dedicated art (NEXT_STEPS roadmap item 3 - minimal visual for the
 	// first playable slice). RefreshCell re-applies this whenever the phase
 	// changes, since RenderCell always runs for the cell's current state.
-	private static Color GetSpikeTrapModulate(SpikeTrapPhase phase)
+	// Dedicated art per phase (GamePalette's hazard colors baked in) rather
+	// than a tint over the shared floor sprite - the escalation from a
+	// quiet plate outline (Safe) to a loud telegraph (Warning/Active) is
+	// part of the art itself now, not a runtime color multiply.
+	private Texture2D GetSpikeTrapTexture(SpikeTrapPhase phase)
 	{
 		return phase switch
 		{
-			SpikeTrapPhase.Warning => Colors.Yellow,
-			SpikeTrapPhase.Active => Colors.Red,
-			_ => new Color(0.65f, 0.65f, 0.7f)
+			SpikeTrapPhase.Warning => _spikeWarningTexture,
+			SpikeTrapPhase.Active => _spikeActiveTexture,
+			_ => _spikeSafeTexture
 		};
 	}
 
@@ -211,7 +209,11 @@ public sealed class DungeonRenderer
 		{
 			Texture = _doorTexture,
 			Position = CellToPosition(x, y),
-			Offset = new Vector2(0, -8),
+			// Matches the wall art's own top-face/front-face convention
+			// (32 wide, 48 tall - a full-tile top face plus a half-tile
+			// front face) - see Main.SetWallCellTexture and wall.tscn for
+			// the same offset used on walls.
+			Offset = new Vector2(0, 24),
 			ZIndex = -1
 		};
 		_root.AddChild(door);

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://buo523lm12i6s"
-path="res://.godot/imported/prison_breakable_wall.svg-bb7eb86322b906ff0944a2caa12b66c6.ctex"
+uid="uid://bf5xx2beylox3"
+path="res://.godot/imported/player.png-e294e0930b30737cad63709b956388b7.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Tiles/prison_breakable_wall.svg"
-dest_files=["res://.godot/imported/prison_breakable_wall.svg-bb7eb86322b906ff0944a2caa12b66c6.ctex"]
+source_file="res://Art/Actors/player.png"
+dest_files=["res://.godot/imported/player.png-e294e0930b30737cad63709b956388b7.ctex"]
 
 [params]
 
@@ -38,6 +38,3 @@ process/hdr_as_srgb=false
 process/hdr_clamp_exposure=false
 process/size_limit=0
 detect_3d/compress_to=1
-svg/scale=1.0
-editor/scale_with_editor_scale=false
-editor/convert_colors_with_editor_theme=false

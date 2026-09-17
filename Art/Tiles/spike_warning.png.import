@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cyblxtv703w2s"
-path="res://.godot/imported/hazard_safe_a.png-1625997721c600307c3bebbb9490a13a.ctex"
+uid="uid://c4fcpntg0m18w"
+path="res://.godot/imported/spike_warning.png-119e15f3b38a08f174453531f1f24f2f.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Prototype/hazard_safe_a.png"
-dest_files=["res://.godot/imported/hazard_safe_a.png-1625997721c600307c3bebbb9490a13a.ctex"]
+source_file="res://Art/Tiles/spike_warning.png"
+dest_files=["res://.godot/imported/spike_warning.png-119e15f3b38a08f174453531f1f24f2f.ctex"]
 
 [params]
 

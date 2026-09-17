@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bbpykfbs3dhwm"
-path="res://.godot/imported/hazard_active_a.png-d203fe0f98fff93828f6645b6960bfc8.ctex"
+uid="uid://byxxj33qcdddx"
+path="res://.godot/imported/wall_breakable.png-d3b237ae92583dafe2eadd0ff3908e32.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Prototype/hazard_active_a.png"
-dest_files=["res://.godot/imported/hazard_active_a.png-d203fe0f98fff93828f6645b6960bfc8.ctex"]
+source_file="res://Art/Tiles/wall_breakable.png"
+dest_files=["res://.godot/imported/wall_breakable.png-d3b237ae92583dafe2eadd0ff3908e32.ctex"]
 
 [params]
 
