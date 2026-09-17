@@ -41,10 +41,12 @@ Sandbox must never overwrite or advance the normal run. Three rules, in order of
 ## Scope (v1)
 
 - **Enter Sandbox** via the "Debug" button on the startup screen, into Edit state, with a blank room.
-- **Cursor.** Mouse hover and arrow keys both move a highlighted cell cursor.
+- **Cursor.** Mouse hover, WASD, and arrow keys move a cell-aligned highlighted cursor. Enter or Space opens the placement menu for the highlighted cell.
+- **Keyboard menus.** Placement and facing menus focus their first option when opened; arrow keys move through options, Enter/Space selects, and Escape closes the menu.
 - **Palette and placement.** Left-clicking a cell opens a menu listing every `TerrainKind`, every `MonsterDefinitions.All` entry (plus loaded mods, i.e. Main's `_spawnPool`), "player start", and Delete. Choosing an object (other than Delete) then asks for a facing to place it with; Delete applies immediately. Delete clears the cell (terrain reverts to `Floor`; a living enemy there is removed from both `_enemies` and `GameState.Enemies`).
 - **Run** (button) enters Play, snapshotting the scenario.
-- **Reset** (button, shown in Play) restores the snapshot taken when Run was pressed, leaving Sandbox ready to replay it.
+- **Restart** (button, shown in Play) restores the latest setup snapshot taken when Run was pressed, leaving Sandbox ready to replay it.
+- **Reset** (button) discards all edits and play state, restores the blank room from Sandbox entry, and returns to Edit.
 - **Scenario save / load.** Write the current scenario to its own directory and load it back.
 - **Exit** (button) returns to the startup screen.
 
@@ -73,8 +75,8 @@ Everything below already exists; the editor is mostly UI over existing primitive
 | Remove an enemy | `QueueFree()` the node and drop it from `_enemies`; `GameState.RemoveDefeatedEnemies` only drops *dead* actors, so remove the living one's `ActorState` explicitly |
 | Move the player | `Player.PlaceAt(cell, CellToPosition(cell))` |
 | Cell <-> pixel | `Main.CellToPosition(GridPosition)` (currently `private`); invert it for mouse picking: `floor((mouse - MapOrigin) / TileSize)`, `TileSize = 32` |
-| Snapshot for Reset | `GameSnapshot.Capture(gameState)` |
-| Restore for Reset | `GameSnapshotRestore.RestoreMap` / `RestoreActor`, then rebuild views the way `Main.RestoreRun` already does |
+| Snapshot for Restart/Reset | `GameSnapshot.Capture(gameState)` |
+| Restore for Restart/Reset | `GameSnapshotRestore.RestoreMap` / `RestoreActor`, then rebuild views the way `Main.RestoreRun` already does |
 | Capture a scenario to disk | `RunSaveEnvelope.Capture(gameState, weapon, tool, enemyDefinitions)` |
 | Write / read a scenario | `RunSaveFileService.Save(directory, envelope)` / `Load(directory)` |
 
@@ -88,11 +90,11 @@ user://scenarios/<scenario-name>/run_save.json
 
 This keeps scenarios completely isolated from the real save slot. Adding an optional filename parameter to the service is the alternative; prefer the directory approach for v1 since it needs no changes to tested code.
 
-### Play snapshot and Reset
+### Play snapshot, Restart and Reset
 
-Take the snapshot when Edit -> Play happens, not on every turn. Two options, and the in-memory one is simpler:
+Take the Restart snapshot when Edit -> Play happens, not on every turn. Capture a separate initial snapshot once when Sandbox opens for Reset. Two options, and the in-memory one is simpler:
 
-- **In memory (preferred).** Hold the `GameSnapshot` plus the parallel list of `MonsterDefinition`s the editor placed. Reset rebuilds from those directly - no serialization, no id-to-definition lookup, no content fingerprint comparison, because the definitions are already in hand.
+- **In memory (preferred).** Hold the `GameSnapshot` plus the parallel list of `MonsterDefinition`s the editor placed. Restart rebuilds from those directly; Reset rebuilds from the initial blank snapshot - no serialization, no id-to-definition lookup, no content fingerprint comparison, because the definitions are already in hand.
 - **Through the save format.** Correct but does strictly more work: `RunSaveEnvelope.Capture` -> restore -> resolve every `DefinitionId` back to a definition, exactly as Continue does.
 
 Use the in-memory path for Reset and the save format only for scenarios written to disk.
@@ -108,13 +110,13 @@ Use the in-memory path for Reset and the save format only for scenarios written 
 
 ### Input keys already taken
 
-`1`/`2`/`3` (weapon select), `-`/`=`/`0` (zoom), `X` (export menu), `R` (restart), `Escape` (pause, or Sandbox's Play->Edit/close-menu), `F` (fixed encounter, to be removed), `Space` (wait), arrows + WASD (movement). Sandbox introduces no new keybindings beyond reusing the arrow keys as its Edit-state cursor and Escape as above - entry (Debug button), Run/Reset/Exit and placement are all mouse-driven UI, per an explicit follow-up request to keep Sandbox's controls out of hidden function keys.
+`1`/`2`/`3` (weapon select), `-`/`=`/`0` (zoom), `X` (export menu), `R` (restart), `Escape` (pause, or Sandbox's Play->Edit/close-menu), `F` (fixed encounter, to be removed), `Space` (wait), arrows + WASD (movement). Sandbox introduces no new keybindings beyond reusing the arrow keys as its Edit-state cursor and Escape as above - entry (Debug button), Run/Restart/Reset/Exit and placement are all mouse-driven UI, per an explicit follow-up request to keep Sandbox's controls out of hidden function keys.
 
 ## Suggested PR slices
 
 Each builds, tests, and is independently reviewable, matching the slicing used for the tactical slice.
 
-1. **Sandbox mode with Edit/Play states.** Startup-screen entry (a "Debug" button), the two-state machine driven by a Run/Reset/Exit button toolbar, the Play snapshot and Reset, the isolation guarantees (suppressed autosave, reload on exit), and a cell cursor driven by mouse and arrow keys. No editing yet - a blank room proves the mode, the states and the isolation before anything can mutate. Testable pure piece: pixel -> cell conversion.
+1. **Sandbox mode with Edit/Play states.** Startup-screen entry (a "Debug" button), the two-state machine driven by a Run/Restart/Reset/Exit button toolbar, the Play snapshot and Restart, the initial snapshot and Reset, the isolation guarantees (suppressed autosave, reload on exit), and a cell cursor driven by mouse and arrow keys. No editing yet - a blank room proves the mode, the states and the isolation before anything can mutate. Testable pure piece: pixel -> cell conversion.
 2. **Terrain palette and placement, plus actors.** Delivered together as one click-to-place menu rather than a separate palette panel: left-click a cell to choose an object (every `TerrainKind`, "Player Start", every `MonsterDefinitions.All` entry, or Delete) and then a facing, applied on confirm; refresh the edited cell. Deleting or overwriting an occupied cell drops any living enemy there from both `_enemies` and `GameState.Enemies` explicitly.
 3. **Scenario save/load.** Capture to a per-scenario directory, list existing scenarios, load one back into Edit.
 
@@ -124,11 +126,12 @@ Follow the existing convention: Godot glue in Main/Sandbox UI stays untested; an
 
 - Pixel <-> cell conversion round-trips, including negative and out-of-bounds coordinates
 - A scenario captured and reloaded produces an identical `GameSnapshot` (terrain, actors, spike phases) - mostly already proven by `Tests/SpikeTrapTests.cs` and `Tests/RunSaveSerializerTests.cs`, so it should be a thin addition
-- Reset restores the snapshot exactly: same terrain, actor positions, health and spike phases as when Play began
+- Restart restores the snapshot exactly: same terrain, actor positions, health and spike phases as when Play began
+- Reset restores the blank Sandbox-entry state and returns to Edit
 - Scenario storage never resolves to the real save directory
 
 ## Acceptance
 
-Building this scenario in Sandbox, playing it, resetting it and saving it should take under a minute: a room, one spike trap, one Charging Beetle positioned so its charge crosses the trap, and the player holding a War Hammer. That is exactly what `Main.StartFixedEncounter` hardcodes today - once Sandbox can reproduce it as a saved scenario, that method should be deleted along with its `F` keybinding.
+Building this scenario in Sandbox, playing it, restarting it and saving it should take under a minute: a room, one spike trap, one Charging Beetle positioned so its charge crosses the trap, and the player holding a War Hammer. That is exactly what `Main.StartFixedEncounter` hardcodes today - once Sandbox can reproduce it as a saved scenario, that method should be deleted along with its `F` keybinding.
 
 A normal run saved before entering Sandbox must be byte-identical afterward, however much was edited or played in between.

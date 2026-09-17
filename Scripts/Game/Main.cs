@@ -59,7 +59,9 @@ public partial class Main : Node2D
 	private VBoxContainer _sandboxToolbar;
 	private Label _sandboxModeLabel;
 	private Button _sandboxRunButton;
+	private Button _sandboxRestartButton;
 	private Button _sandboxResetButton;
+	private GameSnapshot _sandboxInitialSnapshot;
 	private GameSnapshot _sandboxPlaySnapshot;
 	private List<MonsterDefinition> _sandboxPlayEnemyDefinitions;
 
@@ -69,6 +71,8 @@ public partial class Main : Node2D
 	private VBoxContainer _sandboxObjectPage;
 	private VBoxContainer _sandboxObjectListBox;
 	private VBoxContainer _sandboxDirectionPage;
+	private Button _sandboxFirstObjectButton;
+	private Button _sandboxFirstDirectionButton;
 	private bool _sandboxPlacementMenuOpen;
 	private SandboxPaletteKind _pendingPaletteKind;
 	private TerrainKind _pendingTerrainKind;
@@ -226,9 +230,9 @@ public partial class Main : Node2D
 
 		// Sandbox mode is entered from the startup screen's "Debug" button
 		// (OnDebugPressed), not a keybinding - docs/DEBUG_SCENARIO_EDITOR.md
-		// and this session's follow-up keep only Esc and the arrow keys as
-		// Sandbox keyboard shortcuts; everything else is a visible button or
-		// the click-to-place menu below.
+		// and this session's follow-up keep controls visible and discoverable;
+		// WASD/arrows move the cursor, Enter/Space opens placement, and Esc
+		// backs out of the current Sandbox state or menu.
 
 		// Sandbox's Edit-state cursor rides the same move_* actions as
 		// player movement - safe to reuse since Player's own unhandled
@@ -262,6 +266,21 @@ public partial class Main : Node2D
 				GetViewport().SetInputAsHandled();
 				return;
 			}
+		}
+
+		if (_inSandbox &&
+			_sandbox.State == SandboxState.Edit &&
+			!_sandboxPlacementMenuOpen &&
+			@event is InputEventKey sandboxSelectKey &&
+			sandboxSelectKey.Pressed &&
+			!sandboxSelectKey.Echo &&
+			(sandboxSelectKey.Keycode == Key.Enter ||
+				sandboxSelectKey.Keycode == Key.KpEnter ||
+				sandboxSelectKey.Keycode == Key.Space))
+		{
+			OpenSandboxPlacementMenu(_sandbox.CursorPosition);
+			GetViewport().SetInputAsHandled();
+			return;
 		}
 
 		if (_inSandbox &&
@@ -378,6 +397,7 @@ public partial class Main : Node2D
 	// respectively.
 	private void BuildAndRenderDungeon()
 	{
+		_dungeonRenderer?.Clear();
 		_dungeonRenderer = new(
 			this,
 			_wallScene,
@@ -721,10 +741,9 @@ public partial class Main : Node2D
 		_quitButton.FocusNeighborBottom = _quitButton.GetPathTo(_restartButton);
 
 		// Sandbox's on-screen controls (docs/DEBUG_SCENARIO_EDITOR.md): a
-		// mode readout plus Run/Reset/Exit buttons, replacing the earlier
-		// F2/F3/Esc keybindings with visible UI. Only Esc (back to Edit from
-		// Play) and the arrow keys (cursor movement) remain as keyboard
-		// shortcuts.
+		// mode readout plus Run/Restart/Reset/Exit buttons, replacing the earlier
+		// F2/F3/Esc keybindings with visible UI. Keyboard control remains
+		// available for grid movement, placement selection, and backing out.
 		_sandboxToolbar = new VBoxContainer
 		{
 			Visible = false
@@ -735,7 +754,7 @@ public partial class Main : Node2D
 		_sandboxToolbar.OffsetLeft = -180;
 		_sandboxToolbar.OffsetTop = 12;
 		_sandboxToolbar.OffsetRight = -12;
-		_sandboxToolbar.OffsetBottom = 172;
+		_sandboxToolbar.OffsetBottom = 210;
 
 		_sandboxModeLabel = new Label
 		{
@@ -752,6 +771,14 @@ public partial class Main : Node2D
 		};
 		_sandboxRunButton.Pressed += OnSandboxRunPressed;
 		_sandboxToolbar.AddChild(_sandboxRunButton);
+
+		_sandboxRestartButton = new Button
+		{
+			CustomMinimumSize = new Vector2(160, 32),
+			Text = "Restart"
+		};
+		_sandboxRestartButton.Pressed += OnSandboxRestartPressed;
+		_sandboxToolbar.AddChild(_sandboxRestartButton);
 
 		_sandboxResetButton = new Button
 		{
@@ -1244,10 +1271,10 @@ public partial class Main : Node2D
 		{
 			Polygon = new Vector2[]
 			{
-				new(0, 0),
-				new(TileSize, 0),
-				new(TileSize, TileSize),
-				new(0, TileSize)
+				new(-TileSize / 2, -TileSize / 2),
+				new(TileSize / 2, -TileSize / 2),
+				new(TileSize / 2, TileSize / 2),
+				new(-TileSize / 2, TileSize / 2)
 			},
 			Color = new Color(1f, 1f, 0.2f, 0.35f),
 			ZIndex = 5,
@@ -1256,8 +1283,8 @@ public partial class Main : Node2D
 		AddChild(_sandboxCursorVisual);
 	}
 
-	// The click-to-place menu (docs/DEBUG_SCENARIO_EDITOR.md, extended per
-	// this session's follow-up): left-clicking a cell in Sandbox's Edit
+	// The placement menu (docs/DEBUG_SCENARIO_EDITOR.md, extended per this
+	// session's follow-up): left-clicking a cell or pressing Enter/Space in Edit
 	// state opens this, showing every placeable object first (every
 	// TerrainKind, Player Start, every MonsterDefinitions entry, plus
 	// Delete), then a facing to apply with it. Delete and Cancel skip the
@@ -1333,6 +1360,7 @@ public partial class Main : Node2D
 			Button terrainButton = CreateExportMenuButton($"Terrain: {name}");
 			terrainButton.Pressed += () => SelectSandboxTerrain(kind);
 			_sandboxObjectListBox.AddChild(terrainButton);
+			_sandboxFirstObjectButton ??= terrainButton;
 		}
 
 		Button playerStartButton = CreateExportMenuButton("Player Start");
@@ -1364,6 +1392,7 @@ public partial class Main : Node2D
 		Button upButton = CreateExportMenuButton("Facing: Up");
 		upButton.Pressed += () => ConfirmSandboxPlacement(Vector2.Up);
 		_sandboxDirectionPage.AddChild(upButton);
+		_sandboxFirstDirectionButton = upButton;
 
 		Button downButton = CreateExportMenuButton("Facing: Down");
 		downButton.Pressed += () => ConfirmSandboxPlacement(Vector2.Down);
@@ -1389,12 +1418,14 @@ public partial class Main : Node2D
 		_sandboxDirectionPage.Visible = false;
 		_sandboxPlacementOverlay.Visible = true;
 		_sandboxPlacementMenuOpen = true;
+		_sandboxFirstObjectButton.GrabFocus();
 	}
 
 	private void CloseSandboxPlacementMenu()
 	{
 		_sandboxPlacementOverlay.Visible = false;
 		_sandboxPlacementMenuOpen = false;
+		GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
 	}
 
 	private void SelectSandboxTerrain(TerrainKind kind)
@@ -1421,6 +1452,7 @@ public partial class Main : Node2D
 	{
 		_sandboxObjectPage.Visible = false;
 		_sandboxDirectionPage.Visible = true;
+		_sandboxFirstDirectionButton.GrabFocus();
 	}
 
 	// Applies whichever object was selected, at the facing just chosen.
@@ -1857,6 +1889,7 @@ public partial class Main : Node2D
 		_currentPlayerZoneId = -1;
 
 		_sandbox = new ScenarioSandbox(SandboxWidth, SandboxHeight, playerStart);
+		_sandboxInitialSnapshot = GameSnapshot.Capture(_gameState);
 		_sandboxPlaySnapshot = null;
 		_sandboxPlayEnemyDefinitions = null;
 
@@ -1877,12 +1910,13 @@ public partial class Main : Node2D
 		_sandbox.EnterEdit();
 		_gameStarted = false;
 		_player.SetProcessUnhandledInput(false);
+		GetViewport().GuiGetFocusOwner()?.ReleaseFocus();
 		_sandboxCursorVisual.Visible = true;
 		UpdateSandboxCursorVisual();
 		UpdateSandboxToolbar();
 	}
 
-	// Shared by EnterSandboxPlayState and ResetSandbox - both end up with
+	// Shared by EnterSandboxPlayState and RestartSandbox - both end up with
 	// input active and the game resolving normal turns, they differ only in
 	// whether a fresh snapshot is taken first.
 	private void ActivateSandboxPlayInput()
@@ -1908,6 +1942,11 @@ public partial class Main : Node2D
 		EnterSandboxPlayState();
 	}
 
+	private void OnSandboxRestartPressed()
+	{
+		RestartSandbox();
+	}
+
 	private void OnSandboxResetPressed()
 	{
 		ResetSandbox();
@@ -1926,12 +1965,34 @@ public partial class Main : Node2D
 	// the same way RestoreRun does for Continue, using
 	// _sandboxPlayEnemyDefinitions (captured alongside the snapshot) in
 	// place of a save envelope's resolved definition list.
-	private void ResetSandbox()
+	private void RestartSandbox()
 	{
 		if (_sandboxPlaySnapshot == null)
 			return;
 
-		GameSnapshot snapshot = _sandboxPlaySnapshot;
+		RestoreSandboxSnapshot(_sandboxPlaySnapshot, _sandboxPlayEnemyDefinitions);
+		ActivateSandboxPlayInput();
+
+		GD.Print("Sandbox restarted from the latest setup before Run.");
+	}
+
+	// Restores the blank room captured when Sandbox was first entered and
+	// returns to Edit. This deliberately discards both edits and play state;
+	// the next Run captures a new restart point from the rebuilt setup.
+	private void ResetSandbox()
+	{
+		RestoreSandboxSnapshot(_sandboxInitialSnapshot, Array.Empty<MonsterDefinition>());
+		_sandboxPlaySnapshot = null;
+		_sandboxPlayEnemyDefinitions = null;
+		EnterSandboxEditState();
+
+		GD.Print("Sandbox reset to its initial state.");
+	}
+
+	private void RestoreSandboxSnapshot(
+		GameSnapshot snapshot,
+		IReadOnlyList<MonsterDefinition> enemyDefinitions)
+	{
 
 		_dungeonMap = GameSnapshotRestore.RestoreMap(snapshot.Grid, _dungeonSeed);
 		BuildAndRenderDungeon();
@@ -1952,7 +2013,7 @@ public partial class Main : Node2D
 		for (int i = 0; i < snapshot.Enemies.Count; i++)
 		{
 			ActorSnapshot enemySnapshot = snapshot.Enemies[i];
-			MonsterDefinition definition = _sandboxPlayEnemyDefinitions[i];
+			MonsterDefinition definition = enemyDefinitions[i];
 			Vector2 pixelPosition = CellToPosition(enemySnapshot.Position);
 
 			Enemy enemy = _enemyScene.Instantiate<Enemy>();
@@ -1968,10 +2029,6 @@ public partial class Main : Node2D
 		_currentPlayerZoneId = -1;
 
 		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
-
-		ActivateSandboxPlayInput();
-
-		GD.Print("Sandbox reset to the last Play snapshot.");
 	}
 
 	// Never writes anything - Sandbox has no real save to protect, so a
@@ -2001,7 +2058,8 @@ public partial class Main : Node2D
 		bool isEdit = _sandbox.State == SandboxState.Edit;
 		_sandboxModeLabel.Text = isEdit ? "SANDBOX - EDIT" : "SANDBOX - PLAY";
 		_sandboxRunButton.Visible = isEdit;
-		_sandboxResetButton.Visible = !isEdit;
+		_sandboxRestartButton.Visible = !isEdit;
+		_sandboxResetButton.Visible = true;
 	}
 
 	// Continue: rebuilds map/actor/enemy views from a validated save
