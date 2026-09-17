@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bio70ew0w4rmi"
-path="res://.godot/imported/enemy_right_turner.png-ed45ef76c60b346acfc2e86c4437c757.ctex"
+uid="uid://4ntdxao5jh34"
+path="res://.godot/imported/spike_safe.png-83a0e06f8c7808e6d855ccd5cd49c987.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Actors/enemy_right_turner.png"
-dest_files=["res://.godot/imported/enemy_right_turner.png-ed45ef76c60b346acfc2e86c4437c757.ctex"]
+source_file="res://Art/Tiles/spike_safe.png"
+dest_files=["res://.godot/imported/spike_safe.png-83a0e06f8c7808e6d855ccd5cd49c987.ctex"]
 
 [params]
 

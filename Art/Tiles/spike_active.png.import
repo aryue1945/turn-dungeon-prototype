@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://bdvogckfvj2wk"
-path="res://.godot/imported/player_inmate.png-8fb036eb87154a013d8eb7711050e671.ctex"
+uid="uid://bj832d6ijkw6n"
+path="res://.godot/imported/spike_active.png-5265e81464069019fe4f52f8e29879a5.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Actors/player_inmate.png"
-dest_files=["res://.godot/imported/player_inmate.png-8fb036eb87154a013d8eb7711050e671.ctex"]
+source_file="res://Art/Tiles/spike_active.png"
+dest_files=["res://.godot/imported/spike_active.png-5265e81464069019fe4f52f8e29879a5.ctex"]
 
 [params]
 

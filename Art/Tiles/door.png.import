@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://b3eeevhkilrqy"
-path="res://.godot/imported/enemy_patroller.png-2133c153523087bbd2e2a4d277952ace.ctex"
+uid="uid://scfhay03sjxd"
+path="res://.godot/imported/door.png-875212cfc145a1a5f8af36a5a3d1de23.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Actors/enemy_patroller.png"
-dest_files=["res://.godot/imported/enemy_patroller.png-2133c153523087bbd2e2a4d277952ace.ctex"]
+source_file="res://Art/Tiles/door.png"
+dest_files=["res://.godot/imported/door.png-875212cfc145a1a5f8af36a5a3d1de23.ctex"]
 
 [params]
 

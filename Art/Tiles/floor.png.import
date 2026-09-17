@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://blrtfgjvlmw2r"
-path="res://.godot/imported/enemy_left_turner.png-8e752683dc6f7734ddc68be62dd4b091.ctex"
+uid="uid://doflvd56of8xt"
+path="res://.godot/imported/floor.png-162c89d02a6475c6d9d9f9a84e102523.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://Art/Actors/enemy_left_turner.png"
-dest_files=["res://.godot/imported/enemy_left_turner.png-8e752683dc6f7734ddc68be62dd4b091.ctex"]
+source_file="res://Art/Tiles/floor.png"
+dest_files=["res://.godot/imported/floor.png-162c89d02a6475c6d9d9f9a84e102523.ctex"]
 
 [params]
 

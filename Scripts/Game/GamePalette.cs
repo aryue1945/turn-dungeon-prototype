@@ -12,10 +12,12 @@ using Godot;
 //     never has to be relearned floor to floor.
 //   - UI tones are chrome, not world content.
 //
-// Not yet wired into normal gameplay rendering - first validated in the
-// isolated Palette Test area (Main.EnterPaletteTest). Do not reference
-// these from DungeonRenderer/Player/Enemy's default rendering until that
-// direction is approved.
+// This direction is now live in production art (Art/Actors, Art/Tiles) -
+// the values here are baked into those PNGs at authoring time, not read at
+// runtime, so nothing in Scripts/ references these constants directly.
+// Kept as the canonical record of which lospec500 hex each role uses, so
+// new art (a new enemy, a new hazard) pulls from the same values instead
+// of guessing.
 public static class GamePalette
 {
 	// Environment - theme-flexible. A simple three-tone material rule
