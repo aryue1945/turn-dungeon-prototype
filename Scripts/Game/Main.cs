@@ -34,7 +34,15 @@ public partial class Main : Node2D
 	private Button _basicSwordButton;
 	private Control _startupMenuOverlay;
 	private Button _continueButton;
+	private Button _newRunButton;
+	private Button _settingsButton;
 	private Label _startupErrorLabel;
+	private Control _settingsOverlay;
+	private OptionButton _displayModeOption;
+	private OptionButton _windowSizeOption;
+	private CheckButton _vsyncCheckButton;
+	private Button _applyVideoSettingsButton;
+	private VideoSettings _videoSettings;
 	private Control _confirmOverwriteOverlay;
 	private Button _confirmOverwriteCancelButton;
 	private Control _pauseMenuOverlay;
@@ -159,10 +167,13 @@ public partial class Main : Node2D
 		_runId = Guid.NewGuid();
 		_random.Randomize();
 		_spawnPool = BuildSpawnPool();
+		_videoSettings = VideoSettings.Load();
+		_videoSettings.Apply();
 
 		CreateGameUi();
 		CreateWeaponSelection();
 		CreateStartupMenu();
+		CreateSettingsMenu();
 		CreateOverwriteConfirmation();
 		CreatePauseMenu();
 		CreateSandboxCursorVisual();
@@ -1037,7 +1048,7 @@ public partial class Main : Node2D
 
 		PanelContainer startupPanel = new()
 		{
-			CustomMinimumSize = new Vector2(280, 300)
+			CustomMinimumSize = new Vector2(280, 360)
 		};
 		startupCenter.AddChild(startupPanel);
 
@@ -1080,13 +1091,21 @@ public partial class Main : Node2D
 		_continueButton.Pressed += OnContinuePressed;
 		startupBox.AddChild(_continueButton);
 
-		Button newRunButton = new()
+		_newRunButton = new Button
 		{
 			CustomMinimumSize = new Vector2(208, 44),
 			Text = "New Run"
 		};
-		newRunButton.Pressed += OnNewRunPressed;
-		startupBox.AddChild(newRunButton);
+		_newRunButton.Pressed += OnNewRunPressed;
+		startupBox.AddChild(_newRunButton);
+
+		_settingsButton = new Button
+		{
+			CustomMinimumSize = new Vector2(208, 44),
+			Text = "Settings"
+		};
+		_settingsButton.Pressed += OpenSettingsMenu;
+		startupBox.AddChild(_settingsButton);
 
 		startupBox.AddChild(new HSeparator());
 
@@ -1101,6 +1120,102 @@ public partial class Main : Node2D
 		};
 		debugButton.Pressed += OnDebugPressed;
 		startupBox.AddChild(debugButton);
+	}
+
+	private void CreateSettingsMenu()
+	{
+		CanvasLayer settingsLayer = new()
+		{
+			Layer = 12
+		};
+		AddChild(settingsLayer);
+
+		Control settingsRoot = CreateFullRectRoot(settingsLayer);
+		settingsRoot.Visible = false;
+		_settingsOverlay = settingsRoot;
+
+		ColorRect backdrop = new()
+		{
+			Color = new Color(0, 0, 0, 0.7f)
+		};
+		settingsRoot.AddChild(backdrop);
+		backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		CenterContainer settingsCenter = new();
+		settingsRoot.AddChild(settingsCenter);
+		settingsCenter.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		PanelContainer settingsPanel = new()
+		{
+			CustomMinimumSize = new Vector2(360, 330)
+		};
+		settingsCenter.AddChild(settingsPanel);
+
+		MarginContainer settingsMargin = new();
+		settingsMargin.AddThemeConstantOverride("margin_left", 24);
+		settingsMargin.AddThemeConstantOverride("margin_top", 20);
+		settingsMargin.AddThemeConstantOverride("margin_right", 24);
+		settingsMargin.AddThemeConstantOverride("margin_bottom", 20);
+		settingsPanel.AddChild(settingsMargin);
+
+		VBoxContainer settingsBox = new();
+		settingsBox.AddThemeConstantOverride("separation", 12);
+		settingsMargin.AddChild(settingsBox);
+
+		Label titleLabel = new()
+		{
+			Text = "Settings",
+			HorizontalAlignment = HorizontalAlignment.Center
+		};
+		titleLabel.AddThemeFontSizeOverride("font_size", 22);
+		settingsBox.AddChild(titleLabel);
+
+		Label videoLabel = new()
+		{
+			Text = "Video"
+		};
+		videoLabel.AddThemeFontSizeOverride("font_size", 18);
+		videoLabel.AddThemeColorOverride("font_color", Colors.Yellow);
+		settingsBox.AddChild(videoLabel);
+
+		settingsBox.AddChild(new Label { Text = "Display mode" });
+		_displayModeOption = new OptionButton();
+		_displayModeOption.AddItem("Windowed", 0);
+		_displayModeOption.AddItem("Fullscreen", 1);
+		_displayModeOption.ItemSelected += OnDisplayModeSelected;
+		settingsBox.AddChild(_displayModeOption);
+
+		settingsBox.AddChild(new Label { Text = "Window size" });
+		_windowSizeOption = new OptionButton();
+		foreach (Vector2I size in VideoSettings.WindowSizes)
+			_windowSizeOption.AddItem($"{size.X} x {size.Y}");
+		settingsBox.AddChild(_windowSizeOption);
+
+		_vsyncCheckButton = new CheckButton
+		{
+			Text = "Vertical sync"
+		};
+		settingsBox.AddChild(_vsyncCheckButton);
+
+		HBoxContainer actionRow = new();
+		actionRow.AddThemeConstantOverride("separation", 10);
+		settingsBox.AddChild(actionRow);
+
+		_applyVideoSettingsButton = new Button
+		{
+			CustomMinimumSize = new Vector2(146, 40),
+			Text = "Apply"
+		};
+		_applyVideoSettingsButton.Pressed += ApplyVideoSettings;
+		actionRow.AddChild(_applyVideoSettingsButton);
+
+		Button backButton = new()
+		{
+			CustomMinimumSize = new Vector2(146, 40),
+			Text = "Back"
+		};
+		backButton.Pressed += CloseSettingsMenu;
+		actionRow.AddChild(backButton);
 	}
 
 	// The "confirm before replacing an existing unfinished run" step from
@@ -1532,6 +1647,12 @@ public partial class Main : Node2D
 	// docs/DEBUG_SCENARIO_EDITOR.md.
 	private void OnEscapePressed()
 	{
+		if (_settingsOverlay.Visible)
+		{
+			CloseSettingsMenu();
+			return;
+		}
+
 		if (_sandboxPlacementMenuOpen)
 		{
 			CloseSandboxPlacementMenu();
@@ -1601,12 +1722,9 @@ public partial class Main : Node2D
 		GetTree().Quit();
 	}
 
-	// Decides whether a resumable save exists at all (per the decision
-	// table, the startup menu only appears when one does - otherwise go
-	// straight to New Run). A save whose run already ended (Won/Lost) does
-	// not count as resumable - there is nothing left to continue playing,
-	// so both a fresh launch and a post-Restart reload go straight to a
-	// new run instead of offering to "continue" a finished one.
+	// Shows the main menu on every launch so Settings is always reachable.
+	// Continue is enabled only when a valid unfinished save exists; a save
+	// whose run already ended (Won/Lost) has nothing left to resume.
 	private void ShowStartupMenu()
 	{
 		bool hasResumableSave =
@@ -1616,23 +1734,70 @@ public partial class Main : Node2D
 
 		_hasUnfinishedResumableRun = hasResumableSave;
 
-		if (!hasResumableSave)
-		{
-			if (_pendingLoadOutcome.Result == SaveFileLoadResult.Invalid)
-				GD.PushError($"Save file could not be loaded: {_pendingLoadOutcome.Error}");
-
-			StartNewRun(confirmed: true);
-			return;
-		}
-
-		_continueButton.Disabled = false;
+		_continueButton.Disabled = !hasResumableSave;
 		_startupErrorLabel.Visible = _pendingLoadOutcome.Result == SaveFileLoadResult.LoadedFromBackup;
 
 		if (_startupErrorLabel.Visible)
 			_startupErrorLabel.Text = "Recovered from backup - the current save was invalid.";
+		else if (_pendingLoadOutcome.Result == SaveFileLoadResult.Invalid)
+		{
+			_startupErrorLabel.Text = $"Save file could not be loaded: {_pendingLoadOutcome.Error}";
+			_startupErrorLabel.Visible = true;
+		}
 
 		_startupMenuOverlay.Visible = true;
-		_continueButton.GrabFocus();
+
+		if (hasResumableSave)
+			_continueButton.GrabFocus();
+		else
+			_newRunButton.GrabFocus();
+	}
+
+	private void OpenSettingsMenu()
+	{
+		_displayModeOption.Select(_videoSettings.Fullscreen ? 1 : 0);
+
+		int selectedSize = 0;
+		for (int i = 0; i < VideoSettings.WindowSizes.Length; i++)
+		{
+			Vector2I size = VideoSettings.WindowSizes[i];
+			if (size.X == _videoSettings.WindowWidth && size.Y == _videoSettings.WindowHeight)
+			{
+				selectedSize = i;
+				break;
+			}
+		}
+
+		_windowSizeOption.Select(selectedSize);
+		_windowSizeOption.Disabled = _videoSettings.Fullscreen;
+		_vsyncCheckButton.ButtonPressed = _videoSettings.VSyncEnabled;
+		_settingsOverlay.Visible = true;
+		_displayModeOption.GrabFocus();
+	}
+
+	private void CloseSettingsMenu()
+	{
+		_settingsOverlay.Visible = false;
+		_settingsButton.GrabFocus();
+	}
+
+	private void OnDisplayModeSelected(long index)
+	{
+		_windowSizeOption.Disabled = index == 1;
+	}
+
+	private void ApplyVideoSettings()
+	{
+		Vector2I size = VideoSettings.WindowSizes[_windowSizeOption.Selected];
+		_videoSettings.WindowWidth = size.X;
+		_videoSettings.WindowHeight = size.Y;
+		_videoSettings.Fullscreen = _displayModeOption.Selected == 1;
+		_videoSettings.VSyncEnabled = _vsyncCheckButton.ButtonPressed;
+		_videoSettings.Apply();
+
+		Error saveError = _videoSettings.Save();
+		if (saveError != Error.Ok)
+			GD.PushError($"Could not save video settings: {saveError}.");
 	}
 
 	private void OnContinuePressed()
