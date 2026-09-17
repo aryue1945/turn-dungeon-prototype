@@ -57,6 +57,7 @@ The active direction now is gameplay content, not more architecture - see [Next 
 - [Game design](docs/GAME_DESIGN.md): current rules and planned experience.
 - [Architecture](docs/ARCHITECTURE.md): current dependencies and migration.
 - [Save and debug history](docs/SAVE_AND_DEBUG_HISTORY.md): snapshot boundaries, data, and acceptance criteria.
+- [Debug scenario editor](docs/DEBUG_SCENARIO_EDITOR.md): planned authoring tool for building, saving and replaying test scenarios.
 - [Next steps](docs/NEXT_STEPS.md): implemented status and ordered work.
 - [Modding](docs/MODDING.md): current monster JSON support and limitations.
 - [Gameplay ideas](docs/Turn_Dungeon_Gameplay_Ideas.md): exploratory backlog, not implemented scope.
