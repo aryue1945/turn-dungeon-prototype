@@ -88,6 +88,17 @@ public partial class Main : Node2D
 	private MonsterDefinition _pendingMonsterDefinition;
 	private GridPosition _pendingPlacementCell;
 
+	// Isolated static showcase for GamePalette (docs/GAME_DESIGN.md's
+	// palette section) - a separate mode from Sandbox above, entered only
+	// from the startup screen. Not editable and not meant to persist: it
+	// exists purely to judge contrast/readability/shading choices against
+	// the real rendering pipeline before the palette is propagated anywhere
+	// else. See Main.EnterPaletteTest.
+	private const int PaletteTestWidth = 16;
+	private const int PaletteTestHeight = 10;
+
+	private bool _inPaletteTest;
+
 	// Which flow opened the "this will overwrite..." dialog, so its
 	// Confirm/Cancel buttons know whether to build a fresh run in place
 	// (already at the startup screen, nothing to tear down) or reload the
@@ -1148,7 +1159,7 @@ public partial class Main : Node2D
 
 		PanelContainer startupPanel = new()
 		{
-			CustomMinimumSize = new Vector2(280, 360)
+			CustomMinimumSize = new Vector2(280, 408)
 		};
 		startupCenter.AddChild(startupPanel);
 
@@ -1220,6 +1231,17 @@ public partial class Main : Node2D
 		};
 		debugButton.Pressed += OnDebugPressed;
 		startupBox.AddChild(debugButton);
+
+		// Isolated palette showcase (see the PaletteTest* fields/methods
+		// below) - separate from Sandbox above, since it is a static
+		// reference room rather than an editor.
+		Button paletteTestButton = new()
+		{
+			CustomMinimumSize = new Vector2(208, 44),
+			Text = "Palette Test"
+		};
+		paletteTestButton.Pressed += OnPaletteTestPressed;
+		startupBox.AddChild(paletteTestButton);
 	}
 
 	private void CreateSettingsMenu()
@@ -1811,6 +1833,12 @@ public partial class Main : Node2D
 	// docs/DEBUG_SCENARIO_EDITOR.md.
 	private void OnEscapePressed()
 	{
+		if (_inPaletteTest)
+		{
+			GetTree().ReloadCurrentScene();
+			return;
+		}
+
 		if (_settingsOverlay.Visible)
 		{
 			CloseSettingsMenu();
@@ -2244,6 +2272,325 @@ public partial class Main : Node2D
 	private void OnDebugPressed()
 	{
 		EnterSandbox();
+	}
+
+	private void OnPaletteTestPressed()
+	{
+		EnterPaletteTest();
+	}
+
+	// A small, static, isolated room built to judge the Into the Breach-
+	// inspired prototype art set (Art/Prototype/) against the real
+	// rendering pipeline before it is propagated anywhere else. Superseded
+	// the original GamePalette-tint-only version of this same room: floor/
+	// wall/hazard/character color is now baked into dedicated prototype
+	// textures rather than a runtime Modulate over the production art,
+	// since a tint alone can't produce a new silhouette or material shape.
+	// Deliberately not editable and not a Sandbox variant: nothing here can
+	// be rearranged, and nothing runs (no turns, no input) - it exists to
+	// be looked at and zoomed into, then exited. Isolation mirrors
+	// Sandbox's: autosave suppressed for the whole session, exit reloads
+	// the scene, so nothing here can touch a real run or the production
+	// Art/Actors, Art/Tiles assets.
+	private void EnterPaletteTest()
+	{
+		_startupMenuOverlay.Visible = false;
+		_inPaletteTest = true;
+		_suppressAutosave = true;
+
+		_dungeonSeed = unchecked((int)_random.Randi());
+		_dungeonMap = new DungeonMap(PaletteTestWidth, PaletteTestHeight, _dungeonSeed);
+
+		for (int y = 0; y < PaletteTestHeight; y++)
+		{
+			for (int x = 0; x < PaletteTestWidth; x++)
+			{
+				bool isBoundary = x == 0 || y == 0 ||
+					x == PaletteTestWidth - 1 || y == PaletteTestHeight - 1;
+				_dungeonMap.SetTerrain(x, y, isBoundary ? TerrainKind.SolidWall : TerrainKind.Floor);
+			}
+		}
+
+		// A couple of interior blocked tiles, separate from the outer
+		// boundary above - the two get deliberately different treatments
+		// (see BuildAndRenderPrototypeDungeon). Placed flush against the
+		// top boundary (y=1, directly under the y=0 wall) rather than
+		// floating a row further into the room: touching the boundary is
+		// what reads as a coherent recessed doorway/alcove structure
+		// (two jambs flanking a one-cell gap) instead of disconnected
+		// free-floating blocks.
+		_dungeonMap.SetTerrain(7, 1, TerrainKind.SolidWall);
+		_dungeonMap.SetTerrain(9, 1, TerrainKind.SolidWall);
+
+		// All three spike phases pinned at once (rather than left to the
+		// natural cycle) so Safe/Warning/Active can be judged side by side.
+		PlacePaletteTestSpikeTrap(new GridPosition(2, 4), SpikeTrapPhase.Safe, 2);
+		PlacePaletteTestSpikeTrap(new GridPosition(3, 4), SpikeTrapPhase.Warning, 1);
+		PlacePaletteTestSpikeTrap(new GridPosition(4, 4), SpikeTrapPhase.Active, 1);
+
+		BuildAndRenderPrototypeDungeon();
+		ApplyPaletteTestHazardTextures();
+
+		GridPosition playerStart = new(8, 4);
+		_player.PlaceAt(playerStart, CellToPosition(playerStart));
+		_player.SetProcessUnhandledInput(false);
+		ApplyPrototypeSpriteTexture(_player, "res://Art/Prototype/player_a.png");
+		UpdateWeaponDisplay(_player.Weapon);
+		_toolLabel.Text = $"Tool: {_player.DiggingTool.Name}";
+
+		_gameState = new GameState(_dungeonMap, _player.State);
+		CreateFollowingCamera();
+
+		_enemies.Clear();
+		_currentPlayerZoneId = -1;
+
+		SpawnPaletteTestEnemy(new GridPosition(10, 4), MonsterDefinitions.SlowChaser, elite: false);
+		SpawnPaletteTestEnemy(new GridPosition(12, 4), MonsterDefinitions.SlowChaser, elite: true);
+
+		CreatePaletteTestMarker(new GridPosition(2, 7), "res://Art/Prototype/interactable_a.png", "Interactable");
+		CreatePaletteTestMarker(new GridPosition(4, 7), "res://Art/Prototype/reward_a.png", "Reward");
+
+		CreatePaletteTestUi();
+
+		GD.Print("Entered Palette Test area (prototype art set).");
+	}
+
+	private void PlacePaletteTestSpikeTrap(GridPosition cell, SpikeTrapPhase phase, int turnsRemaining)
+	{
+		_dungeonMap.SetTerrain(cell.X, cell.Y, TerrainKind.SpikeTrap);
+		_dungeonMap.RestoreCell(cell.X, cell.Y, TerrainKind.SpikeTrap, 0, false, -1, -1, -1, phase, turnsRemaining);
+	}
+
+	// A dedicated DungeonRenderer fed the new prototype floor/wall textures
+	// in place of Main's production _floorTexture/_wallHorizontalTexture/
+	// etc., reusing DungeonRenderer's own texture-parameterization rather
+	// than tinting the production art. BuildAndRenderDungeon (every normal
+	// run and Sandbox) is untouched. Only one wall variant per role exists
+	// in this pass, so every orientation slot gets the boundary texture as
+	// its default; the door texture is passed through unused (this room
+	// has no doors).
+	private void BuildAndRenderPrototypeDungeon()
+	{
+		Texture2D floorTexture = GD.Load<Texture2D>("res://Art/Prototype/floor_a.png");
+		Texture2D boundaryTexture = GD.Load<Texture2D>("res://Art/Prototype/wall_boundary_a.png");
+		Texture2D blockTexture = GD.Load<Texture2D>("res://Art/Prototype/wall_block_a.png");
+
+		_dungeonRenderer?.Clear();
+		_dungeonRenderer = new DungeonRenderer(
+			this,
+			_wallScene,
+			floorTexture,
+			floorTexture,
+			boundaryTexture,
+			boundaryTexture,
+			boundaryTexture,
+			boundaryTexture,
+			boundaryTexture,
+			boundaryTexture,
+			_doorTexture,
+			MapOrigin,
+			TileSize
+		);
+		_dungeonRenderer.Render(_dungeonMap);
+
+		// NecroDancer-referenced wall treatment (the spatial idea only, not
+		// its texture): blocked terrain is a full-tile raised square - a
+		// lit top face plus a shadowed front face - instead of the tall
+		// overflowing pillar the earlier pass used. wall.tscn's Sprite2D
+		// still carries the production art's -8 offset, so every wall cell
+		// needs that reset to zero regardless of which texture it gets.
+		// Interior obstacles and the outer boundary are two deliberately
+		// different treatments, not the same tile reused: the boundary is
+		// the calmer one - it is the edge of the world, not a thing to
+		// notice - while the interior blocks are the louder, more
+		// sculpted obstacles.
+		for (int x = 0; x < PaletteTestWidth; x++)
+		{
+			SetWallCellTexture(new GridPosition(x, 0), boundaryTexture);
+			SetWallCellTexture(new GridPosition(x, PaletteTestHeight - 1), boundaryTexture);
+		}
+
+		for (int y = 0; y < PaletteTestHeight; y++)
+		{
+			SetWallCellTexture(new GridPosition(0, y), boundaryTexture);
+			SetWallCellTexture(new GridPosition(PaletteTestWidth - 1, y), boundaryTexture);
+		}
+
+		SetWallCellTexture(new GridPosition(7, 1), blockTexture);
+		SetWallCellTexture(new GridPosition(9, 1), blockTexture);
+	}
+
+	// Wall cells track their instantiated wall-scene root, not a bare
+	// Sprite2D (unlike floor/hazard cells) - the texture and the legacy
+	// offset both live on its "Sprite2D" child.
+	// Offset (0, 24) - the prototype wall texture is 32 wide by 48 tall (a
+	// full-tile top face plus a half-tile front face, see
+	// gen_prototype_art.py). A centered Sprite2D with no offset centers
+	// that 48px height on the tile; +24 shifts it down so the sprite's
+	// base lands on the bottom grid line of the row below, which is where
+	// the block reads as actually sitting on the floor. Derived from how
+	// it looks in-engine, not from matching the top face to the tile's own
+	// footprint - a top face aligned exactly to its own cell (offset 8)
+	// renders half a tile too far north.
+	//
+	// Shift half a tile (TileSize/2) less or more and the whole block
+	// moves north/south with it; the blocked grid cell is unaffected
+	// either way, since only the visual extends.
+	private void SetWallCellTexture(GridPosition position, Texture2D texture)
+	{
+		foreach (Node2D node in _dungeonRenderer.GetCellNodes(position))
+		{
+			Sprite2D sprite = node.GetNodeOrNull<Sprite2D>("Sprite2D");
+
+			if (sprite == null)
+				continue;
+
+			sprite.Texture = texture;
+			sprite.Offset = new Vector2(0, 24);
+		}
+	}
+
+	// Swaps each spike-trap cell's rendered sprite to its dedicated hazard
+	// texture (color/shape baked in) and cancels the renderer's own
+	// GetSpikeTrapModulate tint (Colors.White), rather than layering a
+	// color over the shared floor art the way the first pass did.
+	private void ApplyPaletteTestHazardTextures()
+	{
+		SetCellTexture(new GridPosition(2, 4), "res://Art/Prototype/hazard_safe_a.png");
+		SetCellTexture(new GridPosition(3, 4), "res://Art/Prototype/hazard_warning_a.png");
+		SetCellTexture(new GridPosition(4, 4), "res://Art/Prototype/hazard_active_a.png");
+	}
+
+	private void SetCellTexture(GridPosition position, string path)
+	{
+		Texture2D texture = GD.Load<Texture2D>(path);
+
+		foreach (Node2D node in _dungeonRenderer.GetCellNodes(position))
+		{
+			if (node is Sprite2D sprite)
+			{
+				sprite.Texture = texture;
+				sprite.Modulate = Colors.White;
+			}
+		}
+	}
+
+	// Player/Enemy both have a child named "Sprite2D" (main.tscn/enemy.tscn)
+	// already offset to sit correctly above the tile - only the texture
+	// changes here, nothing about how it's positioned. Reversible for free:
+	// exiting reloads the scene, which rebuilds Player/Enemy from their
+	// original scene definitions.
+	private void ApplyPrototypeSpriteTexture(Node2D actor, string path)
+	{
+		Sprite2D sprite = actor.GetNode<Sprite2D>("Sprite2D");
+		sprite.Texture = GD.Load<Texture2D>(path);
+	}
+
+	// The normal enemy uses enemy_normal_a.png as-is - no ring, per the
+	// design direction (the sprite already communicates identity; accent
+	// colors are reserved for states that carry real information). Elite
+	// is that reserved case, and it is now baked into enemy_elite_a.png's
+	// own silhouette (a crimson crest) rather than a floating marker - the
+	// caption label is only for this dev-facing test, not a gameplay UI.
+	private void SpawnPaletteTestEnemy(GridPosition cell, MonsterDefinition definition, bool elite)
+	{
+		Enemy enemy = _enemyScene.Instantiate<Enemy>();
+		enemy.Name = $"{definition.Id.Replace('.', '_')}_{_enemies.Count + 1}";
+		enemy.Configure(definition, cell, CellToPosition(cell), IsWallAt);
+		_enemies.Add(enemy);
+		_gameState.AddEnemy(enemy.State);
+		AddChild(enemy);
+
+		ApplyPrototypeSpriteTexture(enemy, elite
+			? "res://Art/Prototype/enemy_elite_a.png"
+			: "res://Art/Prototype/enemy_normal_a.png");
+
+		if (!elite)
+			return;
+
+		Label eliteLabel = new()
+		{
+			Text = "Elite",
+			Position = new Vector2(-16, -50)
+		};
+		eliteLabel.AddThemeFontSizeOverride("font_size", 12);
+		eliteLabel.AddThemeColorOverride("font_color", GamePalette.EliteAccent);
+		eliteLabel.AddThemeColorOverride("font_outline_color", Colors.Black);
+		eliteLabel.AddThemeConstantOverride("outline_size", 3);
+		enemy.AddChild(eliteLabel);
+	}
+
+	// Interactable/reward have no real systems yet, so these are the
+	// dedicated prototype marker sprites rather than gameplay entities.
+	private void CreatePaletteTestMarker(GridPosition cell, string texturePath, string label)
+	{
+		Vector2 worldPosition = CellToPosition(cell);
+
+		Sprite2D marker = new()
+		{
+			Texture = GD.Load<Texture2D>(texturePath),
+			Position = worldPosition,
+			ZIndex = 1
+		};
+		AddChild(marker);
+
+		Label caption = new()
+		{
+			Text = label,
+			Position = worldPosition + new Vector2(-24, 16)
+		};
+		caption.AddThemeFontSizeOverride("font_size", 12);
+		caption.AddThemeColorOverride("font_color", GamePalette.UITextPrimary);
+		caption.AddThemeColorOverride("font_outline_color", Colors.Black);
+		caption.AddThemeConstantOverride("outline_size", 3);
+		AddChild(caption);
+	}
+
+	// Representative primary/secondary UI text, plus the exit hint - static
+	// chrome, no interaction beyond Esc.
+	private void CreatePaletteTestUi()
+	{
+		CanvasLayer layer = new()
+		{
+			Layer = 9
+		};
+		AddChild(layer);
+
+		Control root = CreateFullRectRoot(layer);
+		root.MouseFilter = Control.MouseFilterEnum.Ignore;
+
+		VBoxContainer box = new();
+		box.AddThemeConstantOverride("separation", 6);
+		root.AddChild(box);
+		box.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
+		box.OffsetLeft = 12;
+		box.OffsetTop = 12;
+		box.OffsetRight = 280;
+		box.OffsetBottom = 100;
+
+		Label title = new()
+		{
+			Text = "PALETTE TEST - Esc to exit"
+		};
+		title.AddThemeFontSizeOverride("font_size", 14);
+		title.AddThemeColorOverride("font_color", GamePalette.UITextSecondary);
+		box.AddChild(title);
+
+		Label primaryText = new()
+		{
+			Text = "Primary UI text"
+		};
+		primaryText.AddThemeFontSizeOverride("font_size", 16);
+		primaryText.AddThemeColorOverride("font_color", GamePalette.UITextPrimary);
+		box.AddChild(primaryText);
+
+		Label secondaryText = new()
+		{
+			Text = "Secondary UI text"
+		};
+		secondaryText.AddThemeFontSizeOverride("font_size", 16);
+		secondaryText.AddThemeColorOverride("font_color", GamePalette.UITextSecondary);
+		box.AddChild(secondaryText);
 	}
 
 	private void EnterSandboxEditState()
@@ -2733,7 +3080,9 @@ public partial class Main : Node2D
 		// Sandbox scenarios routinely have zero enemies (a blank room, or one
 		// being edited) - AreAllEnemiesDefeated would read that as an instant
 		// win. Sandbox has no win condition in the editor, so skip the check.
-		if (_inSandbox)
+		// Palette Test never takes a turn at all, but skip it here too for
+		// the same reason, defensively.
+		if (_inSandbox || _inPaletteTest)
 			return;
 
 		if (!_gameEnded && _gameState.AreAllEnemiesDefeated)
