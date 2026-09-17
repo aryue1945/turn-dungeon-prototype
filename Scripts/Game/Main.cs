@@ -595,6 +595,15 @@ public partial class Main : Node2D
 
 		Control uiRoot = CreateFullRectRoot(canvasLayer);
 
+		// A bare full-rect Control defaults to MouseFilter.Stop, which
+		// silently swallows every mouse click across the whole screen -
+		// including blank areas with no visible HUD element - before it
+		// ever reaches _UnhandledInput. Ignore here lets clicks fall
+		// through to the game world (Sandbox placement, camera zoom); the
+		// HUD panel and buttons below keep their own default Stop filter,
+		// so clicks on them are still captured normally.
+		uiRoot.MouseFilter = Control.MouseFilterEnum.Ignore;
+
 		PanelContainer hudPanel = new();
 		uiRoot.AddChild(hudPanel);
 		hudPanel.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
