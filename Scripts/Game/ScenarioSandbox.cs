@@ -64,17 +64,16 @@ public sealed class ScenarioSandbox
 		);
 	}
 
-	// The inverse of Main.CellToPosition, for mouse picking. Floors rather
-	// than truncates so a pixel position slightly left/above the origin
-	// resolves to cell -1, not 0 - truncation would fold two different
-	// cells' worth of negative-side pixels onto cell 0.
+	// The inverse of Main.CellToPosition, where each position is the center
+	// of its tile. Adding half a tile before flooring maps the full visual
+	// tile rectangle to its cell instead of shifting picking by half a cell.
 	public static GridPosition PixelToCell(Vector2 pixel, Vector2 origin, float tileSize)
 	{
 		Vector2 local = pixel - origin;
 
 		return new GridPosition(
-			(int)MathF.Floor(local.X / tileSize),
-			(int)MathF.Floor(local.Y / tileSize)
+			(int)MathF.Floor((local.X + tileSize / 2) / tileSize),
+			(int)MathF.Floor((local.Y + tileSize / 2) / tileSize)
 		);
 	}
 }
