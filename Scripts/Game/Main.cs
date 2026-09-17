@@ -47,9 +47,18 @@ public partial class Main : Node2D
 	private bool _wasPlayerInputEnabledBeforePauseMenu;
 	private SaveFileLoadOutcome _pendingLoadOutcome;
 	private bool _hasUnfinishedResumableRun;
-	private bool _isFixedEncounter;
+	private bool _suppressAutosave;
 	private OverwriteConfirmationReason _overwriteConfirmationReason;
 	private static bool _skipStartupMenuForNewRun;
+
+	private const int SandboxWidth = 11;
+	private const int SandboxHeight = 7;
+
+	private bool _inSandbox;
+	private ScenarioSandbox _sandbox;
+	private Node2D _sandboxCursorVisual;
+	private Label _sandboxModeLabel;
+	private GameSnapshot _sandboxPlaySnapshot;
 
 	// Which flow opened the "this will overwrite..." dialog, so its
 	// Confirm/Cancel buttons know whether to build a fresh run in place
@@ -130,6 +139,7 @@ public partial class Main : Node2D
 		CreateStartupMenu();
 		CreateOverwriteConfirmation();
 		CreatePauseMenu();
+		CreateSandboxCursorVisual();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
 		_player.WaitRequested += OnPlayerWaitRequested;
@@ -179,6 +189,8 @@ public partial class Main : Node2D
 		// Debug-only launcher for the hand-built War Hammer/Charging
 		// Beetle/Spike Trap encounter (NEXT_STEPS roadmap item 3), only
 		// reachable from the startup screen so it can never fire mid-play.
+		// To be retired once Sandbox mode can reproduce this scenario as a
+		// saved scenario (docs/DEBUG_SCENARIO_EDITOR.md's acceptance note).
 		if (_startupMenuOverlay.Visible &&
 			@event is InputEventKey debugKey &&
 			debugKey.Pressed &&
@@ -188,6 +200,57 @@ public partial class Main : Node2D
 			StartFixedEncounter();
 			GetViewport().SetInputAsHandled();
 			return;
+		}
+
+		// Sandbox mode entry, only reachable from the startup screen -
+		// docs/DEBUG_SCENARIO_EDITOR.md.
+		if (_startupMenuOverlay.Visible &&
+			@event is InputEventKey sandboxEntryKey &&
+			sandboxEntryKey.Pressed &&
+			!sandboxEntryKey.Echo &&
+			sandboxEntryKey.Keycode == Key.F1)
+		{
+			EnterSandbox();
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
+		// Sandbox's Edit-state cursor rides the same move_* actions as
+		// player movement - safe to reuse since Player's own unhandled
+		// input is disabled for the whole time Edit is active, so these
+		// actions would otherwise go nowhere. Echo is deliberately allowed
+		// through (unlike player movement) so holding a direction repeats,
+		// which is what scanning across cells with a cursor should do.
+		if (_inSandbox &&
+			_sandbox.State == SandboxState.Edit &&
+			@event is InputEventKey sandboxMoveKey &&
+			sandboxMoveKey.Pressed)
+		{
+			Vector2 direction = Vector2.Zero;
+
+			if (@event.IsActionPressed("move_left"))
+				direction = Vector2.Left;
+			else if (@event.IsActionPressed("move_right"))
+				direction = Vector2.Right;
+			else if (@event.IsActionPressed("move_up"))
+				direction = Vector2.Up;
+			else if (@event.IsActionPressed("move_down"))
+				direction = Vector2.Down;
+
+			if (direction != Vector2.Zero)
+			{
+				_sandbox.MoveCursor((int)direction.X, (int)direction.Y);
+				UpdateSandboxCursorVisual();
+				GetViewport().SetInputAsHandled();
+				return;
+			}
+		}
+
+		if (_inSandbox &&
+			_sandbox.State == SandboxState.Edit &&
+			@event is InputEventMouseMotion)
+		{
+			UpdateSandboxCursorFromMouse();
 		}
 
 		if (@event is InputEventMouseButton mouseButton &&
@@ -232,6 +295,18 @@ public partial class Main : Node2D
 					return;
 
 				OnRestartPressed();
+				break;
+			case Key.F2:
+				if (!_inSandbox)
+					return;
+
+				ToggleSandboxState();
+				break;
+			case Key.F3:
+				if (!_inSandbox || _sandboxPlaySnapshot == null)
+					return;
+
+				ResetSandbox();
 				break;
 			case Key.Escape:
 				OnEscapePressed();
@@ -617,6 +692,20 @@ public partial class Main : Node2D
 		_restartButton.FocusNeighborBottom = _restartButton.GetPathTo(_quitButton);
 		_quitButton.FocusNeighborTop = _quitButton.GetPathTo(_restartButton);
 		_quitButton.FocusNeighborBottom = _quitButton.GetPathTo(_restartButton);
+
+		_sandboxModeLabel = new Label
+		{
+			Visible = false,
+			HorizontalAlignment = Godot.HorizontalAlignment.Right
+		};
+		_sandboxModeLabel.AddThemeFontSizeOverride("font_size", 14);
+		_sandboxModeLabel.AddThemeColorOverride("font_color", Colors.Yellow);
+		uiRoot.AddChild(_sandboxModeLabel);
+		_sandboxModeLabel.SetAnchorsPreset(Control.LayoutPreset.TopRight);
+		_sandboxModeLabel.OffsetLeft = -260;
+		_sandboxModeLabel.OffsetTop = 12;
+		_sandboxModeLabel.OffsetRight = -12;
+		_sandboxModeLabel.OffsetBottom = 56;
 
 		CreateExportMenu();
 	}
@@ -1070,11 +1159,38 @@ public partial class Main : Node2D
 		resumeButton.FocusNeighborBottom = resumeButton.GetPathTo(_pauseRestartButton);
 	}
 
+	// A single semi-transparent tile highlighting Sandbox's edit cursor.
+	// Created once and reused - Visible toggles with Edit/Play, Position
+	// follows ScenarioSandbox.CursorPosition (see UpdateSandboxCursorVisual).
+	private void CreateSandboxCursorVisual()
+	{
+		_sandboxCursorVisual = new Polygon2D
+		{
+			Polygon = new Vector2[]
+			{
+				new(0, 0),
+				new(TileSize, 0),
+				new(TileSize, TileSize),
+				new(0, TileSize)
+			},
+			Color = new Color(1f, 1f, 0.2f, 0.35f),
+			ZIndex = 5,
+			Visible = false
+		};
+		AddChild(_sandboxCursorVisual);
+	}
+
 	// ESC closes whichever modal is already open (export menu first, then
 	// pause menu) rather than stacking a second one on top, and otherwise
 	// opens the pause menu.
 	private void OnEscapePressed()
 	{
+		if (_inSandbox)
+		{
+			ExitSandbox();
+			return;
+		}
+
 		if (_exportMenuOverlay.Visible)
 		{
 			CloseExportMenu();
@@ -1320,12 +1436,12 @@ public partial class Main : Node2D
 	// item 3), reachable only by pressing "F" on the startup screen -
 	// entirely separate from DungeonGenerator/EncounterPlanner, per the
 	// instruction to keep this out of procedural generation until the
-	// interaction is proven. Autosave is suppressed (_isFixedEncounter)
+	// interaction is proven. Autosave is suppressed (_suppressAutosave)
 	// so testing it can never overwrite a real save.
 	private void StartFixedEncounter()
 	{
 		_startupMenuOverlay.Visible = false;
-		_isFixedEncounter = true;
+		_suppressAutosave = true;
 
 		const int width = 11;
 		const int height = 7;
@@ -1381,6 +1497,154 @@ public partial class Main : Node2D
 		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
 
 		GD.Print("Started fixed tactical encounter: War Hammer + Charging Beetle + Spike Trap.");
+	}
+
+	// Sandbox mode (docs/DEBUG_SCENARIO_EDITOR.md), reachable only from the
+	// startup screen. A separate mode rather than a toggle over the active
+	// run, entered into a blank hand-built room - completely isolated from
+	// DungeonGenerator/EncounterPlanner and from the real save (autosave
+	// suppressed for the whole session; exiting reloads the scene, so
+	// nothing from a Sandbox session can survive into a normal run).
+	private void EnterSandbox()
+	{
+		_startupMenuOverlay.Visible = false;
+		_inSandbox = true;
+		_suppressAutosave = true;
+
+		_dungeonSeed = unchecked((int)_random.Randi());
+		_dungeonMap = new DungeonMap(SandboxWidth, SandboxHeight, _dungeonSeed);
+
+		for (int y = 0; y < SandboxHeight; y++)
+		{
+			for (int x = 0; x < SandboxWidth; x++)
+			{
+				bool isBoundary = x == 0 || y == 0 || x == SandboxWidth - 1 || y == SandboxHeight - 1;
+				_dungeonMap.SetTerrain(x, y, isBoundary ? TerrainKind.SolidWall : TerrainKind.Floor);
+			}
+		}
+
+		BuildAndRenderDungeon();
+
+		GridPosition playerStart = new(SandboxWidth / 2, SandboxHeight / 2);
+		_player.PlaceAt(playerStart, CellToPosition(playerStart));
+		UpdateWeaponDisplay(_player.Weapon);
+		_toolLabel.Text = $"Tool: {_player.DiggingTool.Name}";
+		_healthLabel.Text = $"HP: {_player.Health}";
+
+		_gameState = new GameState(_dungeonMap, _player.State);
+		CreateFollowingCamera();
+
+		_enemies.Clear();
+		_currentPlayerZoneId = -1;
+
+		_sandbox = new ScenarioSandbox(SandboxWidth, SandboxHeight, playerStart);
+		_sandboxPlaySnapshot = null;
+
+		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
+
+		EnterSandboxEditState();
+
+		GD.Print("Entered Sandbox mode.");
+	}
+
+	private void EnterSandboxEditState()
+	{
+		_sandbox.EnterEdit();
+		_gameStarted = false;
+		_player.SetProcessUnhandledInput(false);
+		_sandboxCursorVisual.Visible = true;
+		UpdateSandboxCursorVisual();
+		UpdateSandboxModeLabel();
+	}
+
+	// Shared by EnterSandboxPlayState and ResetSandbox - both end up with
+	// input active and the game resolving normal turns, they differ only in
+	// whether a fresh snapshot is taken first.
+	private void ActivateSandboxPlayInput()
+	{
+		_sandbox.EnterPlay();
+		_gameStarted = true;
+		_gameEnded = false;
+		_endGameOverlay.Visible = false;
+		_player.SetProcessUnhandledInput(true);
+		_sandboxCursorVisual.Visible = false;
+		UpdateSandboxModeLabel();
+	}
+
+	private void EnterSandboxPlayState()
+	{
+		_sandboxPlaySnapshot = GameSnapshot.Capture(_gameState);
+		ActivateSandboxPlayInput();
+	}
+
+	private void ToggleSandboxState()
+	{
+		if (_sandbox.State == SandboxState.Edit)
+			EnterSandboxPlayState();
+		else
+			EnterSandboxEditState();
+	}
+
+	// Restores the snapshot taken when Play began and resumes Play
+	// immediately, so the same situation can be replayed without leaving
+	// Sandbox. Rebuilds from the in-memory snapshot directly (no
+	// serialization, no id-to-definition lookup, no fingerprint check) -
+	// slice 1 places no enemies yet, so only map and player round-trip;
+	// later slices restore enemies here the same way RestoreRun does.
+	private void ResetSandbox()
+	{
+		if (_sandboxPlaySnapshot == null)
+			return;
+
+		GameSnapshot snapshot = _sandboxPlaySnapshot;
+
+		_dungeonMap = GameSnapshotRestore.RestoreMap(snapshot.Grid, _dungeonSeed);
+		BuildAndRenderDungeon();
+
+		WeaponDefinition weapon = _player.Weapon;
+		_player.Attack.Equip(weapon.PrimaryAttack);
+		ActorState playerState = GameSnapshotRestore.RestoreActor(snapshot.Player, _player.Attack);
+		_player.RestoreFrom(playerState, weapon, _player.DiggingTool, CellToPosition(snapshot.Player.Position));
+
+		_gameState = new GameState(_dungeonMap, playerState);
+		_gameState.RestoreTurnNumber(snapshot.TurnNumber);
+
+		_enemies.Clear();
+		_currentPlayerZoneId = -1;
+
+		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
+
+		ActivateSandboxPlayInput();
+
+		GD.Print("Sandbox reset to the last Play snapshot.");
+	}
+
+	// Never writes anything - Sandbox has no real save to protect, so a
+	// plain reload is enough. Whatever the player's actual save said before
+	// Sandbox was entered is what ShowStartupMenu will see again.
+	private void ExitSandbox()
+	{
+		GetTree().ReloadCurrentScene();
+	}
+
+	private void UpdateSandboxCursorVisual()
+	{
+		_sandboxCursorVisual.Position = CellToPosition(_sandbox.CursorPosition);
+	}
+
+	private void UpdateSandboxCursorFromMouse()
+	{
+		GridPosition cell = ScenarioSandbox.PixelToCell(GetGlobalMousePosition(), MapOrigin, TileSize);
+		_sandbox.SetCursor(cell);
+		UpdateSandboxCursorVisual();
+	}
+
+	private void UpdateSandboxModeLabel()
+	{
+		_sandboxModeLabel.Visible = _inSandbox;
+		_sandboxModeLabel.Text = _sandbox.State == SandboxState.Edit
+			? "SANDBOX - EDIT\nF2: Play   Esc: Exit"
+			: "SANDBOX - PLAY\nF2: Edit   F3: Reset   Esc: Exit";
 	}
 
 	// Continue: rebuilds map/actor/enemy views from a validated save
@@ -1719,6 +1983,12 @@ public partial class Main : Node2D
 
 	private void CheckForVictory()
 	{
+		// Sandbox scenarios routinely have zero enemies (a blank room, or one
+		// being edited) - AreAllEnemiesDefeated would read that as an instant
+		// win. Sandbox has no win condition in the editor, so skip the check.
+		if (_inSandbox)
+			return;
+
 		if (!_gameEnded && _gameState.AreAllEnemiesDefeated)
 			EndGame(true);
 	}
@@ -1795,9 +2065,11 @@ public partial class Main : Node2D
 	// something that should crash a turn.
 	private void AutosaveCurrentRun()
 	{
-		// The debug fixed encounter (StartFixedEncounter) must never
-		// overwrite a real save just from being played for testing.
-		if (_isFixedEncounter)
+		// The debug fixed encounter (StartFixedEncounter) and Sandbox mode
+		// must never overwrite a real save just from being played for
+		// testing - set once on entry and never cleared, so no per-state
+		// toggle can ever leave it wrong (docs/DEBUG_SCENARIO_EDITOR.md).
+		if (_suppressAutosave)
 			return;
 
 		try
