@@ -41,9 +41,9 @@ Sandbox must never overwrite or advance the normal run. Three rules, in order of
 ## Scope (v1)
 
 - **Enter Sandbox** via the "Debug" button on the startup screen, into Edit state, with a blank room.
-- **Cursor.** Mouse hover, WASD, and arrow keys move a cell-aligned highlighted cursor. Enter or Space opens the placement menu for the highlighted cell.
+- **Cursor.** WASD and arrow keys move a cell-aligned highlighted cursor without passive mouse motion overriding its position. Enter or Space opens the placement menu for the highlighted cell; clicking a tile opens placement directly on that tile.
 - **Keyboard menus.** Placement and facing menus focus their first option when opened; arrow keys move through options, Enter/Space selects, and Escape closes the menu.
-- **Palette and placement.** Left-clicking a cell opens a menu listing every `TerrainKind`, every `MonsterDefinitions.All` entry (plus loaded mods, i.e. Main's `_spawnPool`), "player start", and Delete. Choosing an object (other than Delete) then asks for a facing to place it with; Delete applies immediately. Delete clears the cell (terrain reverts to `Floor`; a living enemy there is removed from both `_enemies` and `GameState.Enemies`).
+- **Palette and placement.** Left-clicking a cell opens a two-column menu: the left side contains Enemy, Wall, Ground, and Structure groups plus the top-level Player Start, Delete, and Cancel actions; the right side contains the selected group's objects. Right/Enter opens a group and Left returns to its category. Enemy includes the built-in roster plus loaded mods from Main's `_spawnPool`. Only enemies ask for a facing; terrain and Player Start apply immediately, with wall orientation left to the renderer. Delete clears the cell (terrain reverts to `Floor`; a living enemy there is removed from both `_enemies` and `GameState.Enemies`).
 - **Run** (button) enters Play, snapshotting the scenario.
 - **Restart** (button, shown in Play) restores the latest setup snapshot taken when Run was pressed, leaving Sandbox ready to replay it.
 - **Reset** (button) discards all edits and play state, restores the blank room from Sandbox entry, and returns to Edit.
@@ -116,8 +116,8 @@ Use the in-memory path for Reset and the save format only for scenarios written 
 
 Each builds, tests, and is independently reviewable, matching the slicing used for the tactical slice.
 
-1. **Sandbox mode with Edit/Play states.** Startup-screen entry (a "Debug" button), the two-state machine driven by a Run/Restart/Reset/Exit button toolbar, the Play snapshot and Restart, the initial snapshot and Reset, the isolation guarantees (suppressed autosave, reload on exit), and a cell cursor driven by mouse and arrow keys. No editing yet - a blank room proves the mode, the states and the isolation before anything can mutate. Testable pure piece: pixel -> cell conversion.
-2. **Terrain palette and placement, plus actors.** Delivered together as one click-to-place menu rather than a separate palette panel: left-click a cell to choose an object (every `TerrainKind`, "Player Start", every `MonsterDefinitions.All` entry, or Delete) and then a facing, applied on confirm; refresh the edited cell. Deleting or overwriting an occupied cell drops any living enemy there from both `_enemies` and `GameState.Enemies` explicitly.
+1. **Sandbox mode with Edit/Play states.** Startup-screen entry (a "Debug" button), the two-state machine driven by a Run/Restart/Reset/Exit button toolbar, the Play snapshot and Restart, the initial snapshot and Reset, the isolation guarantees (suppressed autosave, reload on exit), and a keyboard-driven cell cursor with direct mouse-click targeting. A blank room proves the mode, states, and isolation before anything can mutate. Testable pure piece: pixel-to-cell conversion.
+2. **Terrain palette and placement, plus actors.** Delivered together as one click-to-place menu rather than a separate palette panel: left-click a cell to choose terrain, Player Start, an enemy, or Delete. Terrain and Player Start apply immediately; only enemies choose a facing. Deleting or overwriting an occupied cell drops any living enemy there from both `_enemies` and `GameState.Enemies` explicitly.
 3. **Scenario save/load.** Capture to a per-scenario directory, list existing scenarios, load one back into Edit.
 
 ## Testing

@@ -34,7 +34,14 @@ public partial class Main : Node2D
 	private Button _basicSwordButton;
 	private Control _startupMenuOverlay;
 	private Button _continueButton;
+	private Button _newRunButton;
+	private Button _settingsButton;
 	private Label _startupErrorLabel;
+	private Control _settingsOverlay;
+	private OptionButton _displayModeOption;
+	private OptionButton _windowSizeOption;
+	private CheckButton _vsyncCheckButton;
+	private VideoSettings _videoSettings;
 	private Control _confirmOverwriteOverlay;
 	private Button _confirmOverwriteCancelButton;
 	private Control _pauseMenuOverlay;
@@ -50,8 +57,8 @@ public partial class Main : Node2D
 	private OverwriteConfirmationReason _overwriteConfirmationReason;
 	private static bool _skipStartupMenuForNewRun;
 
-	private const int SandboxWidth = 11;
-	private const int SandboxHeight = 7;
+	private const int SandboxWidth = 18;
+	private const int SandboxHeight = 12;
 
 	private bool _inSandbox;
 	private ScenarioSandbox _sandbox;
@@ -61,30 +68,25 @@ public partial class Main : Node2D
 	private Button _sandboxRunButton;
 	private Button _sandboxRestartButton;
 	private Button _sandboxResetButton;
+	private Button _sandboxExitButton;
 	private GameSnapshot _sandboxInitialSnapshot;
 	private GameSnapshot _sandboxPlaySnapshot;
 	private List<MonsterDefinition> _sandboxPlayEnemyDefinitions;
 
-	// The click-to-place menu (docs/DEBUG_SCENARIO_EDITOR.md): pick an object,
-	// then a facing, applied together to whichever cell was clicked.
+	// The click-to-place menu (docs/DEBUG_SCENARIO_EDITOR.md): pick an object;
+	// enemies then choose a facing, while other objects apply immediately.
 	private Control _sandboxPlacementOverlay;
-	private VBoxContainer _sandboxObjectPage;
+	private Control _sandboxObjectPage;
 	private VBoxContainer _sandboxObjectListBox;
+	private readonly Dictionary<Button, Action> _sandboxCategoryActions = new();
 	private VBoxContainer _sandboxDirectionPage;
 	private Button _sandboxFirstObjectButton;
+	private Button _sandboxActiveCategoryButton;
+	private Button _sandboxFirstSubgroupButton;
 	private Button _sandboxFirstDirectionButton;
 	private bool _sandboxPlacementMenuOpen;
-	private SandboxPaletteKind _pendingPaletteKind;
-	private TerrainKind _pendingTerrainKind;
 	private MonsterDefinition _pendingMonsterDefinition;
 	private GridPosition _pendingPlacementCell;
-
-	private enum SandboxPaletteKind
-	{
-		Terrain,
-		PlayerStart,
-		Enemy
-	}
 
 	// Which flow opened the "this will overwrite..." dialog, so its
 	// Confirm/Cancel buttons know whether to build a fresh run in place
@@ -159,10 +161,13 @@ public partial class Main : Node2D
 		_runId = Guid.NewGuid();
 		_random.Randomize();
 		_spawnPool = BuildSpawnPool();
+		_videoSettings = VideoSettings.Load();
+		_videoSettings.Apply();
 
 		CreateGameUi();
 		CreateWeaponSelection();
 		CreateStartupMenu();
+		CreateSettingsMenu();
 		CreateOverwriteConfirmation();
 		CreatePauseMenu();
 		CreateSandboxCursorVisual();
@@ -189,6 +194,42 @@ public partial class Main : Node2D
 		else
 		{
 			ShowStartupMenu();
+		}
+	}
+
+	public override void _Input(InputEvent @event)
+	{
+		if (@event is InputEventKey tabKey &&
+			tabKey.Pressed &&
+			!tabKey.Echo &&
+			tabKey.Keycode == Key.Tab)
+		{
+			HandleGameplayTab();
+			GetViewport().SetInputAsHandled();
+			return;
+		}
+
+		if (@event is InputEventKey placementKey &&
+			placementKey.Pressed &&
+			!placementKey.Echo &&
+			_sandboxPlacementMenuOpen &&
+			_sandboxObjectPage.Visible)
+		{
+			if (placementKey.Keycode == Key.Left &&
+				_sandboxActiveCategoryButton != null &&
+				GetViewport().GuiGetFocusOwner() is Control placementFocus &&
+				_sandboxObjectListBox.IsAncestorOf(placementFocus))
+			{
+				_sandboxActiveCategoryButton.GrabFocus();
+				GetViewport().SetInputAsHandled();
+			}
+			else if (placementKey.Keycode == Key.Right &&
+				GetViewport().GuiGetFocusOwner() is Button categoryButton &&
+				_sandboxCategoryActions.TryGetValue(categoryButton, out Action openCategory))
+			{
+				openCategory();
+				GetViewport().SetInputAsHandled();
+			}
 		}
 	}
 
@@ -245,6 +286,7 @@ public partial class Main : Node2D
 		if (_inSandbox &&
 			_sandbox.State == SandboxState.Edit &&
 			!_sandboxPlacementMenuOpen &&
+			GetViewport().GuiGetFocusOwner() == null &&
 			@event is InputEventKey sandboxMoveKey &&
 			sandboxMoveKey.Pressed)
 		{
@@ -271,6 +313,7 @@ public partial class Main : Node2D
 		if (_inSandbox &&
 			_sandbox.State == SandboxState.Edit &&
 			!_sandboxPlacementMenuOpen &&
+			GetViewport().GuiGetFocusOwner() == null &&
 			@event is InputEventKey sandboxSelectKey &&
 			sandboxSelectKey.Pressed &&
 			!sandboxSelectKey.Echo &&
@@ -281,13 +324,6 @@ public partial class Main : Node2D
 			OpenSandboxPlacementMenu(_sandbox.CursorPosition);
 			GetViewport().SetInputAsHandled();
 			return;
-		}
-
-		if (_inSandbox &&
-			_sandbox.State == SandboxState.Edit &&
-			@event is InputEventMouseMotion)
-		{
-			UpdateSandboxCursorFromMouse();
 		}
 
 		// Click-to-place: left-click a cell in Edit to open the object +
@@ -481,10 +517,10 @@ public partial class Main : Node2D
 			LimitLeft = Mathf.RoundToInt(MapOrigin.X - TileSize / 2),
 			LimitTop = Mathf.RoundToInt(MapOrigin.Y - TileSize / 2),
 			LimitRight = Mathf.RoundToInt(
-				MapOrigin.X + (MapWidth - 1) * TileSize + TileSize / 2
+				MapOrigin.X + (_dungeonMap.Width - 1) * TileSize + TileSize / 2
 			),
 			LimitBottom = Mathf.RoundToInt(
-				MapOrigin.Y + (MapHeight - 1) * TileSize + TileSize / 2
+				MapOrigin.Y + (_dungeonMap.Height - 1) * TileSize + TileSize / 2
 			)
 		};
 
@@ -598,6 +634,64 @@ public partial class Main : Node2D
 		}
 	}
 
+	// Tab is reserved for switching between the playfield and its contextual
+	// HUD/toolbar. It never advances to another menu item; arrows do that.
+	// Modal menus consume Tab without changing focus.
+	private bool HandleGameplayTab()
+	{
+		if (_startupMenuOverlay.Visible ||
+			_settingsOverlay.Visible ||
+			_confirmOverwriteOverlay.Visible ||
+			_pauseMenuOverlay.Visible ||
+			_exportMenuOverlay.Visible ||
+			_weaponSelectionPanel.Visible ||
+			_sandboxPlacementOverlay.Visible ||
+			_endGameOverlay.Visible)
+		{
+			return true;
+		}
+
+		Control focusOwner = GetViewport().GuiGetFocusOwner();
+
+		if (_inSandbox)
+		{
+			Button modeButton = _sandbox.State == SandboxState.Edit
+				? _sandboxRunButton
+				: _sandboxRestartButton;
+			Button[] controls = { modeButton, _sandboxResetButton, _sandboxExitButton };
+			int focusedIndex = Array.IndexOf(controls, focusOwner);
+
+			if (focusedIndex < 0)
+			{
+				controls[0].GrabFocus();
+				_player.SetProcessUnhandledInput(false);
+				return true;
+			}
+
+			focusOwner.ReleaseFocus();
+			if (_sandbox.State == SandboxState.Play)
+				_player.SetProcessUnhandledInput(true);
+
+			return true;
+		}
+
+		if (!_gameStarted || _gameEnded)
+			return true;
+
+		if (focusOwner == _exportHistoryButton)
+		{
+			focusOwner.ReleaseFocus();
+			_player.SetProcessUnhandledInput(true);
+		}
+		else
+		{
+			_exportHistoryButton.GrabFocus();
+			_player.SetProcessUnhandledInput(false);
+		}
+
+		return true;
+	}
+
 	private static Control CreateFullRectRoot(CanvasLayer layer)
 	{
 		Control root = new();
@@ -627,14 +721,14 @@ public partial class Main : Node2D
 		hudPanel.SetAnchorsPreset(Control.LayoutPreset.TopLeft);
 		hudPanel.OffsetLeft = 12;
 		hudPanel.OffsetTop = 12;
-		hudPanel.OffsetRight = 224;
-		hudPanel.OffsetBottom = 116;
+		hudPanel.OffsetRight = 118;
+		hudPanel.OffsetBottom = 64;
 
 		MarginContainer hudMargin = new();
-		hudMargin.AddThemeConstantOverride("margin_left", 10);
-		hudMargin.AddThemeConstantOverride("margin_top", 6);
-		hudMargin.AddThemeConstantOverride("margin_right", 10);
-		hudMargin.AddThemeConstantOverride("margin_bottom", 6);
+		hudMargin.AddThemeConstantOverride("margin_left", 5);
+		hudMargin.AddThemeConstantOverride("margin_top", 3);
+		hudMargin.AddThemeConstantOverride("margin_right", 5);
+		hudMargin.AddThemeConstantOverride("margin_bottom", 3);
 		hudPanel.AddChild(hudMargin);
 
 		VBoxContainer hud = new();
@@ -642,12 +736,12 @@ public partial class Main : Node2D
 		hudMargin.AddChild(hud);
 
 		HBoxContainer weaponRow = new();
-		weaponRow.AddThemeConstantOverride("separation", 6);
+		weaponRow.AddThemeConstantOverride("separation", 3);
 		hud.AddChild(weaponRow);
 
 		_weaponIcon = new TextureRect
 		{
-			CustomMinimumSize = new Vector2(24, 24),
+			CustomMinimumSize = new Vector2(12, 12),
 			StretchMode = TextureRect.StretchModeEnum.KeepAspectCentered,
 			Visible = false
 		};
@@ -657,7 +751,7 @@ public partial class Main : Node2D
 		{
 			Text = "Weapon: not selected"
 		};
-		_weaponLabel.AddThemeFontSizeOverride("font_size", 16);
+		_weaponLabel.AddThemeFontSizeOverride("font_size", 10);
 		_weaponLabel.AddThemeColorOverride("font_color", Colors.White);
 		weaponRow.AddChild(_weaponLabel);
 
@@ -665,7 +759,7 @@ public partial class Main : Node2D
 		{
 			Text = $"Tool: {_player.DiggingTool.Name}"
 		};
-		_toolLabel.AddThemeFontSizeOverride("font_size", 16);
+		_toolLabel.AddThemeFontSizeOverride("font_size", 10);
 		_toolLabel.AddThemeColorOverride("font_color", Colors.White);
 		hud.AddChild(_toolLabel);
 
@@ -676,6 +770,8 @@ public partial class Main : Node2D
 			Text = "Export Debug History"
 		};
 		_exportHistoryButton.Pressed += OnExportDebugHistoryPressed;
+		_exportHistoryButton.AddThemeFontSizeOverride("font_size", 10);
+		_exportHistoryButton.CustomMinimumSize = new Vector2(96, 18);
 		hud.AddChild(_exportHistoryButton);
 
 		CenterContainer endGameCenter = new()
@@ -795,6 +891,21 @@ public partial class Main : Node2D
 		};
 		sandboxExitButton.Pressed += OnSandboxExitPressed;
 		_sandboxToolbar.AddChild(sandboxExitButton);
+		_sandboxExitButton = sandboxExitButton;
+
+		Button[] sandboxToolbarButtons =
+		{
+			_sandboxRunButton,
+			_sandboxRestartButton,
+			_sandboxResetButton,
+			_sandboxExitButton
+		};
+		foreach (Button button in sandboxToolbarButtons)
+		{
+			NodePath ownPath = button.GetPathTo(button);
+			button.FocusNeighborLeft = ownPath;
+			button.FocusNeighborRight = ownPath;
+		}
 
 		CreateExportMenu();
 	}
@@ -1037,7 +1148,7 @@ public partial class Main : Node2D
 
 		PanelContainer startupPanel = new()
 		{
-			CustomMinimumSize = new Vector2(280, 300)
+			CustomMinimumSize = new Vector2(280, 360)
 		};
 		startupCenter.AddChild(startupPanel);
 
@@ -1080,13 +1191,21 @@ public partial class Main : Node2D
 		_continueButton.Pressed += OnContinuePressed;
 		startupBox.AddChild(_continueButton);
 
-		Button newRunButton = new()
+		_newRunButton = new Button
 		{
 			CustomMinimumSize = new Vector2(208, 44),
 			Text = "New Run"
 		};
-		newRunButton.Pressed += OnNewRunPressed;
-		startupBox.AddChild(newRunButton);
+		_newRunButton.Pressed += OnNewRunPressed;
+		startupBox.AddChild(_newRunButton);
+
+		_settingsButton = new Button
+		{
+			CustomMinimumSize = new Vector2(208, 44),
+			Text = "Settings"
+		};
+		_settingsButton.Pressed += OpenSettingsMenu;
+		startupBox.AddChild(_settingsButton);
 
 		startupBox.AddChild(new HSeparator());
 
@@ -1101,6 +1220,96 @@ public partial class Main : Node2D
 		};
 		debugButton.Pressed += OnDebugPressed;
 		startupBox.AddChild(debugButton);
+	}
+
+	private void CreateSettingsMenu()
+	{
+		CanvasLayer settingsLayer = new()
+		{
+			Layer = 12
+		};
+		AddChild(settingsLayer);
+
+		Control settingsRoot = CreateFullRectRoot(settingsLayer);
+		settingsRoot.Visible = false;
+		_settingsOverlay = settingsRoot;
+
+		ColorRect backdrop = new()
+		{
+			Color = new Color(0, 0, 0, 0.7f)
+		};
+		settingsRoot.AddChild(backdrop);
+		backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		CenterContainer settingsCenter = new();
+		settingsRoot.AddChild(settingsCenter);
+		settingsCenter.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		PanelContainer settingsPanel = new()
+		{
+			CustomMinimumSize = new Vector2(360, 330)
+		};
+		settingsCenter.AddChild(settingsPanel);
+
+		MarginContainer settingsMargin = new();
+		settingsMargin.AddThemeConstantOverride("margin_left", 24);
+		settingsMargin.AddThemeConstantOverride("margin_top", 20);
+		settingsMargin.AddThemeConstantOverride("margin_right", 24);
+		settingsMargin.AddThemeConstantOverride("margin_bottom", 20);
+		settingsPanel.AddChild(settingsMargin);
+
+		VBoxContainer settingsBox = new();
+		settingsBox.AddThemeConstantOverride("separation", 12);
+		settingsMargin.AddChild(settingsBox);
+
+		Label titleLabel = new()
+		{
+			Text = "Settings",
+			HorizontalAlignment = HorizontalAlignment.Center
+		};
+		titleLabel.AddThemeFontSizeOverride("font_size", 22);
+		settingsBox.AddChild(titleLabel);
+
+		Label videoLabel = new()
+		{
+			Text = "Video"
+		};
+		videoLabel.AddThemeFontSizeOverride("font_size", 18);
+		videoLabel.AddThemeColorOverride("font_color", Colors.Yellow);
+		settingsBox.AddChild(videoLabel);
+
+		settingsBox.AddChild(new Label { Text = "Display mode" });
+		_displayModeOption = new OptionButton();
+		_displayModeOption.AddItem("Windowed", 0);
+		_displayModeOption.AddItem("Fullscreen", 1);
+		_displayModeOption.ItemSelected += OnDisplayModeSelected;
+		settingsBox.AddChild(_displayModeOption);
+
+		settingsBox.AddChild(new Label { Text = "Window size" });
+		_windowSizeOption = new OptionButton();
+		foreach (Vector2I size in VideoSettings.WindowSizes)
+			_windowSizeOption.AddItem($"{size.X} x {size.Y}");
+		_windowSizeOption.ItemSelected += OnWindowSizeSelected;
+		settingsBox.AddChild(_windowSizeOption);
+
+		_vsyncCheckButton = new CheckButton
+		{
+			Text = "Vertical sync"
+		};
+		_vsyncCheckButton.Toggled += OnVsyncToggled;
+		settingsBox.AddChild(_vsyncCheckButton);
+
+		HBoxContainer actionRow = new();
+		actionRow.AddThemeConstantOverride("separation", 10);
+		settingsBox.AddChild(actionRow);
+
+		Button backButton = new()
+		{
+			CustomMinimumSize = new Vector2(302, 40),
+			Text = "Back"
+		};
+		backButton.Pressed += CloseSettingsMenu;
+		actionRow.AddChild(backButton);
 	}
 
 	// The "confirm before replacing an existing unfinished run" step from
@@ -1285,10 +1494,9 @@ public partial class Main : Node2D
 
 	// The placement menu (docs/DEBUG_SCENARIO_EDITOR.md, extended per this
 	// session's follow-up): left-clicking a cell or pressing Enter/Space in Edit
-	// state opens this, showing every placeable object first (every
-	// TerrainKind, Player Start, every MonsterDefinitions entry, plus
-	// Delete), then a facing to apply with it. Delete and Cancel skip the
-	// facing page entirely, since there is nothing to face.
+	// state opens this two-column browser. Broad categories stay on the left;
+	// Right/Enter opens their objects on the right and Left returns to the
+	// category. Player Start, Delete, and Cancel remain top-level actions.
 	private void CreateSandboxPlacementMenu()
 	{
 		CanvasLayer placementLayer = new()
@@ -1314,7 +1522,7 @@ public partial class Main : Node2D
 
 		PanelContainer menuPanel = new()
 		{
-			CustomMinimumSize = new Vector2(280, 420)
+			CustomMinimumSize = new Vector2(500, 420)
 		};
 		menuCenter.AddChild(menuPanel);
 
@@ -1331,56 +1539,79 @@ public partial class Main : Node2D
 
 		Label titleLabel = new()
 		{
-			CustomMinimumSize = new Vector2(232, 28),
+			CustomMinimumSize = new Vector2(452, 28),
 			Text = "Place object",
 			HorizontalAlignment = Godot.HorizontalAlignment.Center
 		};
 		outerBox.AddChild(titleLabel);
 
-		_sandboxObjectPage = new VBoxContainer();
-		_sandboxObjectPage.AddThemeConstantOverride("separation", 10);
+		_sandboxObjectPage = new HBoxContainer();
+		_sandboxObjectPage.AddThemeConstantOverride("separation", 12);
 		outerBox.AddChild(_sandboxObjectPage);
+
+		VBoxContainer categoryBox = new();
+		categoryBox.AddThemeConstantOverride("separation", 6);
 
 		_sandboxObjectListBox = new VBoxContainer();
 		_sandboxObjectListBox.AddThemeConstantOverride("separation", 6);
 
+		ScrollContainer categoryScroll = new()
+		{
+			CustomMinimumSize = new Vector2(180, 300)
+		};
+		categoryScroll.AddChild(categoryBox);
+		_sandboxObjectPage.AddChild(categoryScroll);
+
 		ScrollContainer objectScroll = new()
 		{
-			CustomMinimumSize = new Vector2(232, 260)
+			CustomMinimumSize = new Vector2(260, 300)
 		};
 		objectScroll.AddChild(_sandboxObjectListBox);
 		_sandboxObjectPage.AddChild(objectScroll);
 
-		foreach (TerrainKind kind in Enum.GetValues<TerrainKind>())
-		{
-			if (kind == TerrainKind.Empty)
-				continue;
+		Button enemyCategory = CreateSandboxCategoryButton("Enemy  →");
+		RegisterSandboxCategory(enemyCategory, () => ShowSandboxEnemyGroup(enemyCategory));
+		categoryBox.AddChild(enemyCategory);
+		_sandboxFirstObjectButton = enemyCategory;
 
-			string name = TerrainCatalog.Get(kind).Name;
-			Button terrainButton = CreateExportMenuButton($"Terrain: {name}");
-			terrainButton.Pressed += () => SelectSandboxTerrain(kind);
-			_sandboxObjectListBox.AddChild(terrainButton);
-			_sandboxFirstObjectButton ??= terrainButton;
-		}
+		Button wallCategory = CreateSandboxCategoryButton("Wall  →");
+		RegisterSandboxCategory(wallCategory, () => ShowSandboxTerrainGroup(
+			wallCategory,
+			TerrainKind.SolidWall,
+			TerrainKind.BreakableWall,
+			TerrainKind.TreeWall,
+			TerrainKind.GrowingWall
+		));
+		categoryBox.AddChild(wallCategory);
 
-		Button playerStartButton = CreateExportMenuButton("Player Start");
+		Button groundCategory = CreateSandboxCategoryButton("Ground  →");
+		RegisterSandboxCategory(groundCategory, () => ShowSandboxTerrainGroup(
+			groundCategory,
+			TerrainKind.Floor,
+			TerrainKind.Fire,
+			TerrainKind.Ice,
+			TerrainKind.SpikeTrap
+		));
+		categoryBox.AddChild(groundCategory);
+
+		Button structureCategory = CreateSandboxCategoryButton("Structure  →");
+		RegisterSandboxCategory(structureCategory, () => ShowSandboxTerrainGroup(
+			structureCategory,
+			TerrainKind.Door
+		));
+		categoryBox.AddChild(structureCategory);
+
+		Button playerStartButton = CreateSandboxCategoryButton("Player Start");
 		playerStartButton.Pressed += SelectSandboxPlayerStart;
-		_sandboxObjectListBox.AddChild(playerStartButton);
+		categoryBox.AddChild(playerStartButton);
 
-		foreach (MonsterDefinition monster in MonsterDefinitions.All)
-		{
-			Button enemyButton = CreateExportMenuButton($"Enemy: {monster.Name}");
-			enemyButton.Pressed += () => SelectSandboxEnemy(monster);
-			_sandboxObjectListBox.AddChild(enemyButton);
-		}
-
-		Button deleteButton = CreateExportMenuButton("Delete");
+		Button deleteButton = CreateSandboxCategoryButton("Delete");
 		deleteButton.Pressed += ConfirmSandboxDelete;
-		_sandboxObjectPage.AddChild(deleteButton);
+		categoryBox.AddChild(deleteButton);
 
-		Button objectCancelButton = CreateExportMenuButton("Cancel");
+		Button objectCancelButton = CreateSandboxCategoryButton("Cancel");
 		objectCancelButton.Pressed += CloseSandboxPlacementMenu;
-		_sandboxObjectPage.AddChild(objectCancelButton);
+		categoryBox.AddChild(objectCancelButton);
 
 		_sandboxDirectionPage = new VBoxContainer
 		{
@@ -1411,11 +1642,71 @@ public partial class Main : Node2D
 		_sandboxDirectionPage.AddChild(directionCancelButton);
 	}
 
+	private static Button CreateSandboxCategoryButton(string text)
+	{
+		return new Button
+		{
+			CustomMinimumSize = new Vector2(168, 36),
+			Text = text
+		};
+	}
+
+	private void RegisterSandboxCategory(Button button, Action action)
+	{
+		_sandboxCategoryActions[button] = action;
+		button.Pressed += action;
+	}
+
+	private void ShowSandboxEnemyGroup(Button categoryButton)
+	{
+		ClearSandboxSubgroup(categoryButton);
+
+		foreach (MonsterDefinition monster in _spawnPool)
+		{
+			Button enemyButton = CreateExportMenuButton(monster.Name);
+			enemyButton.CustomMinimumSize = new Vector2(248, 36);
+			enemyButton.Pressed += () => SelectSandboxEnemy(monster);
+			_sandboxObjectListBox.AddChild(enemyButton);
+			_sandboxFirstSubgroupButton ??= enemyButton;
+		}
+
+		_sandboxFirstSubgroupButton?.GrabFocus();
+	}
+
+	private void ShowSandboxTerrainGroup(Button categoryButton, params TerrainKind[] kinds)
+	{
+		ClearSandboxSubgroup(categoryButton);
+
+		foreach (TerrainKind kind in kinds)
+		{
+			Button terrainButton = CreateExportMenuButton(TerrainCatalog.Get(kind).Name);
+			terrainButton.CustomMinimumSize = new Vector2(248, 36);
+			terrainButton.Pressed += () => SelectSandboxTerrain(kind);
+			_sandboxObjectListBox.AddChild(terrainButton);
+			_sandboxFirstSubgroupButton ??= terrainButton;
+		}
+
+		_sandboxFirstSubgroupButton?.GrabFocus();
+	}
+
+	private void ClearSandboxSubgroup(Button categoryButton)
+	{
+		foreach (Node child in _sandboxObjectListBox.GetChildren())
+		{
+			_sandboxObjectListBox.RemoveChild(child);
+			child.QueueFree();
+		}
+
+		_sandboxActiveCategoryButton = categoryButton;
+		_sandboxFirstSubgroupButton = null;
+	}
+
 	private void OpenSandboxPlacementMenu(GridPosition cell)
 	{
 		_pendingPlacementCell = cell;
 		_sandboxObjectPage.Visible = true;
 		_sandboxDirectionPage.Visible = false;
+		ClearSandboxSubgroup(null);
 		_sandboxPlacementOverlay.Visible = true;
 		_sandboxPlacementMenuOpen = true;
 		_sandboxFirstObjectButton.GrabFocus();
@@ -1430,20 +1721,24 @@ public partial class Main : Node2D
 
 	private void SelectSandboxTerrain(TerrainKind kind)
 	{
-		_pendingPaletteKind = SandboxPaletteKind.Terrain;
-		_pendingTerrainKind = kind;
-		ShowSandboxDirectionPage();
+		RemoveSandboxEnemyAt(_pendingPlacementCell);
+		_dungeonMap.SetTerrain(_pendingPlacementCell.X, _pendingPlacementCell.Y, kind);
+		_dungeonRenderer.RefreshCell(
+			_dungeonMap,
+			_pendingPlacementCell.X,
+			_pendingPlacementCell.Y
+		);
+		CloseSandboxPlacementMenu();
 	}
 
 	private void SelectSandboxPlayerStart()
 	{
-		_pendingPaletteKind = SandboxPaletteKind.PlayerStart;
-		ShowSandboxDirectionPage();
+		_player.PlaceAt(_pendingPlacementCell, CellToPosition(_pendingPlacementCell));
+		CloseSandboxPlacementMenu();
 	}
 
 	private void SelectSandboxEnemy(MonsterDefinition monster)
 	{
-		_pendingPaletteKind = SandboxPaletteKind.Enemy;
 		_pendingMonsterDefinition = monster;
 		ShowSandboxDirectionPage();
 	}
@@ -1455,28 +1750,12 @@ public partial class Main : Node2D
 		_sandboxFirstDirectionButton.GrabFocus();
 	}
 
-	// Applies whichever object was selected, at the facing just chosen.
-	// Terrain has no facing to apply - the direction page still runs first
-	// for it (this session's explicit choice: every placement, not only
-	// actors, asks for a direction), it is simply unused past this point.
+	// Only enemies choose a facing. Terrain orientation is a renderer concern,
+	// and Player Start does not change the player's existing facing.
 	private void ConfirmSandboxPlacement(Vector2 direction)
 	{
-		switch (_pendingPaletteKind)
-		{
-			case SandboxPaletteKind.Terrain:
-				RemoveSandboxEnemyAt(_pendingPlacementCell);
-				_dungeonMap.SetTerrain(_pendingPlacementCell.X, _pendingPlacementCell.Y, _pendingTerrainKind);
-				_dungeonRenderer.RefreshCell(_dungeonMap, _pendingPlacementCell.X, _pendingPlacementCell.Y);
-				break;
-			case SandboxPaletteKind.PlayerStart:
-				_player.PlaceAt(_pendingPlacementCell, CellToPosition(_pendingPlacementCell));
-				_player.SetFacing(direction);
-				break;
-			case SandboxPaletteKind.Enemy:
-				RemoveSandboxEnemyAt(_pendingPlacementCell);
-				SpawnSandboxEnemy(_pendingPlacementCell, _pendingMonsterDefinition, direction);
-				break;
-		}
+		RemoveSandboxEnemyAt(_pendingPlacementCell);
+		SpawnSandboxEnemy(_pendingPlacementCell, _pendingMonsterDefinition, direction);
 
 		CloseSandboxPlacementMenu();
 	}
@@ -1532,6 +1811,12 @@ public partial class Main : Node2D
 	// docs/DEBUG_SCENARIO_EDITOR.md.
 	private void OnEscapePressed()
 	{
+		if (_settingsOverlay.Visible)
+		{
+			CloseSettingsMenu();
+			return;
+		}
+
 		if (_sandboxPlacementMenuOpen)
 		{
 			CloseSandboxPlacementMenu();
@@ -1601,12 +1886,9 @@ public partial class Main : Node2D
 		GetTree().Quit();
 	}
 
-	// Decides whether a resumable save exists at all (per the decision
-	// table, the startup menu only appears when one does - otherwise go
-	// straight to New Run). A save whose run already ended (Won/Lost) does
-	// not count as resumable - there is nothing left to continue playing,
-	// so both a fresh launch and a post-Restart reload go straight to a
-	// new run instead of offering to "continue" a finished one.
+	// Shows the main menu on every launch so Settings is always reachable.
+	// Continue is enabled only when a valid unfinished save exists; a save
+	// whose run already ended (Won/Lost) has nothing left to resume.
 	private void ShowStartupMenu()
 	{
 		bool hasResumableSave =
@@ -1616,23 +1898,81 @@ public partial class Main : Node2D
 
 		_hasUnfinishedResumableRun = hasResumableSave;
 
-		if (!hasResumableSave)
-		{
-			if (_pendingLoadOutcome.Result == SaveFileLoadResult.Invalid)
-				GD.PushError($"Save file could not be loaded: {_pendingLoadOutcome.Error}");
-
-			StartNewRun(confirmed: true);
-			return;
-		}
-
-		_continueButton.Disabled = false;
+		_continueButton.Disabled = !hasResumableSave;
 		_startupErrorLabel.Visible = _pendingLoadOutcome.Result == SaveFileLoadResult.LoadedFromBackup;
 
 		if (_startupErrorLabel.Visible)
 			_startupErrorLabel.Text = "Recovered from backup - the current save was invalid.";
+		else if (_pendingLoadOutcome.Result == SaveFileLoadResult.Invalid)
+		{
+			_startupErrorLabel.Text = $"Save file could not be loaded: {_pendingLoadOutcome.Error}";
+			_startupErrorLabel.Visible = true;
+		}
 
 		_startupMenuOverlay.Visible = true;
-		_continueButton.GrabFocus();
+
+		if (hasResumableSave)
+			_continueButton.GrabFocus();
+		else
+			_newRunButton.GrabFocus();
+	}
+
+	private void OpenSettingsMenu()
+	{
+		_displayModeOption.Select(_videoSettings.Fullscreen ? 1 : 0);
+
+		int selectedSize = 0;
+		for (int i = 0; i < VideoSettings.WindowSizes.Length; i++)
+		{
+			Vector2I size = VideoSettings.WindowSizes[i];
+			if (size.X == _videoSettings.WindowWidth && size.Y == _videoSettings.WindowHeight)
+			{
+				selectedSize = i;
+				break;
+			}
+		}
+
+		_windowSizeOption.Select(selectedSize);
+		_windowSizeOption.Disabled = _videoSettings.Fullscreen;
+		_vsyncCheckButton.ButtonPressed = _videoSettings.VSyncEnabled;
+		_settingsOverlay.Visible = true;
+		_displayModeOption.GrabFocus();
+	}
+
+	private void CloseSettingsMenu()
+	{
+		_settingsOverlay.Visible = false;
+		_settingsButton.GrabFocus();
+	}
+
+	private void OnDisplayModeSelected(long index)
+	{
+		_windowSizeOption.Disabled = index == 1;
+		ApplyVideoSettings();
+	}
+
+	private void OnWindowSizeSelected(long index)
+	{
+		ApplyVideoSettings();
+	}
+
+	private void OnVsyncToggled(bool toggledOn)
+	{
+		ApplyVideoSettings();
+	}
+
+	private void ApplyVideoSettings()
+	{
+		Vector2I size = VideoSettings.WindowSizes[_windowSizeOption.Selected];
+		_videoSettings.WindowWidth = size.X;
+		_videoSettings.WindowHeight = size.Y;
+		_videoSettings.Fullscreen = _displayModeOption.Selected == 1;
+		_videoSettings.VSyncEnabled = _vsyncCheckButton.ButtonPressed;
+		_videoSettings.Apply();
+
+		Error saveError = _videoSettings.Save();
+		if (saveError != Error.Ok)
+			GD.PushError($"Could not save video settings: {saveError}.");
 	}
 
 	private void OnContinuePressed()
@@ -1768,6 +2108,7 @@ public partial class Main : Node2D
 		{
 			_startupMenuOverlay.Visible = false;
 			_confirmOverwriteOverlay.Visible = true;
+			_confirmOverwriteCancelButton.GrabFocus();
 			return;
 		}
 
@@ -2042,13 +2383,6 @@ public partial class Main : Node2D
 	private void UpdateSandboxCursorVisual()
 	{
 		_sandboxCursorVisual.Position = CellToPosition(_sandbox.CursorPosition);
-	}
-
-	private void UpdateSandboxCursorFromMouse()
-	{
-		GridPosition cell = ScenarioSandbox.PixelToCell(GetGlobalMousePosition(), MapOrigin, TileSize);
-		_sandbox.SetCursor(cell);
-		UpdateSandboxCursorVisual();
 	}
 
 	private void UpdateSandboxToolbar()

@@ -64,14 +64,15 @@ public sealed class ScenarioSandboxTests
 		Assert.That(sandbox.State, Is.EqualTo(SandboxState.Edit));
 	}
 
+	[TestCase(-16f, -16f, 0, 0)]
 	[TestCase(0f, 0f, 0, 0)]
-	[TestCase(31f, 31f, 0, 0)]
-	[TestCase(32f, 0f, 1, 0)]
-	[TestCase(0f, 32f, 0, 1)]
-	[TestCase(-1f, 0f, -1, 0)]
-	[TestCase(-32f, -32f, -1, -1)]
-	[TestCase(-33f, 0f, -2, 0)]
-	public void PixelToCell_FloorsRatherThanTruncatesAroundTheOrigin(
+	[TestCase(15f, 15f, 0, 0)]
+	[TestCase(16f, 0f, 1, 0)]
+	[TestCase(0f, 16f, 0, 1)]
+	[TestCase(-17f, 0f, -1, 0)]
+	[TestCase(-48f, -48f, -1, -1)]
+	[TestCase(-49f, 0f, -2, 0)]
+	public void PixelToCell_UsesCenteredTileBoundsAroundTheOrigin(
 		float pixelX,
 		float pixelY,
 		int expectedX,
