@@ -63,6 +63,20 @@ public sealed class DungeonRenderer
 		RenderCell(map, x, y);
 	}
 
+	public void Clear()
+	{
+		foreach (List<Node2D> nodes in _cellNodes.Values)
+		{
+			foreach (Node2D node in nodes)
+			{
+				if (GodotObject.IsInstanceValid(node))
+					node.QueueFree();
+			}
+		}
+
+		_cellNodes.Clear();
+	}
+
 	private void RenderCell(DungeonMap map, int x, int y)
 	{
 		DungeonCell cell = map.GetCell(x, y);
