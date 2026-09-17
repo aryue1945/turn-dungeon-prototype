@@ -63,6 +63,21 @@ public sealed class DungeonRenderer
 		RenderCell(map, x, y);
 	}
 
+	// Read-only lookup of whatever nodes RenderCell tracked for one cell
+	// (its floor sprite, wall instance, door sprite - whichever apply).
+	// Lets external code layer a Modulate override on top of the real
+	// rendered nodes without RenderCell/GetWallModulate/GetSpikeTrapModulate
+	// themselves needing to know about it - used by Main's isolated Palette
+	// Test area (docs/GAME_DESIGN.md) to preview semantic palette colors
+	// without changing this renderer's default output.
+	public IReadOnlyList<Node2D> GetCellNodes(GridPosition position)
+	{
+		if (_cellNodes.TryGetValue(position, out List<Node2D> nodes))
+			return nodes;
+
+		return new List<Node2D>();
+	}
+
 	public void Clear()
 	{
 		foreach (List<Node2D> nodes in _cellNodes.Values)
