@@ -21,7 +21,6 @@ public partial class Main : Node2D
 	private List<MonsterDefinition> _spawnPool = new();
 
 	private Player _player;
-	private Label _healthLabel;
 	private Label _weaponLabel;
 	private TextureRect _weaponIcon;
 	private Label _toolLabel;
@@ -167,7 +166,6 @@ public partial class Main : Node2D
 
 		_player.MoveRequested += OnPlayerMoveRequested;
 		_player.WaitRequested += OnPlayerWaitRequested;
-		_player.HealthChanged += OnPlayerHealthChanged;
 		_player.Died += OnPlayerDied;
 
 		_player.SetProcessUnhandledInput(false);
@@ -610,7 +608,7 @@ public partial class Main : Node2D
 		hudPanel.OffsetLeft = 12;
 		hudPanel.OffsetTop = 12;
 		hudPanel.OffsetRight = 224;
-		hudPanel.OffsetBottom = 148;
+		hudPanel.OffsetBottom = 116;
 
 		MarginContainer hudMargin = new();
 		hudMargin.AddThemeConstantOverride("margin_left", 10);
@@ -622,14 +620,6 @@ public partial class Main : Node2D
 		VBoxContainer hud = new();
 		hud.AddThemeConstantOverride("separation", 2);
 		hudMargin.AddChild(hud);
-
-		_healthLabel = new Label
-		{
-			Text = $"HP: {_player.Health}"
-		};
-		_healthLabel.AddThemeFontSizeOverride("font_size", 24);
-		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
-		hud.AddChild(_healthLabel);
 
 		HBoxContainer weaponRow = new();
 		weaponRow.AddThemeConstantOverride("separation", 6);
@@ -1805,8 +1795,6 @@ public partial class Main : Node2D
 		_player.EquipWeapon(WeaponDefinitions.WarHammer);
 		UpdateWeaponDisplay(_player.Weapon);
 		_toolLabel.Text = $"Tool: {_player.DiggingTool.Name}";
-		_healthLabel.Text = $"HP: {_player.Health}";
-
 		_gameState = new GameState(_dungeonMap, _player.State);
 		CreateFollowingCamera();
 
@@ -1862,8 +1850,6 @@ public partial class Main : Node2D
 		_player.PlaceAt(playerStart, CellToPosition(playerStart));
 		UpdateWeaponDisplay(_player.Weapon);
 		_toolLabel.Text = $"Tool: {_player.DiggingTool.Name}";
-		_healthLabel.Text = $"HP: {_player.Health}";
-
 		_gameState = new GameState(_dungeonMap, _player.State);
 		CreateFollowingCamera();
 
@@ -2066,8 +2052,6 @@ public partial class Main : Node2D
 
 		UpdateWeaponDisplay(weapon);
 		_toolLabel.Text = $"Tool: {tool.Name}";
-		_healthLabel.Text = $"HP: {_player.Health}";
-
 		_gameStarted = true;
 		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
 
@@ -2384,14 +2368,8 @@ public partial class Main : Node2D
 		GD.Print(playerWon ? "Room cleared!" : "Game over!");
 	}
 
-	private void OnPlayerHealthChanged(int health)
-	{
-		_healthLabel.Text = $"HP: {health}";
-	}
-
 	private void OnPlayerDied()
 	{
-		_healthLabel.Text = "HP: 0";
 		EndGame(false);
 	}
 

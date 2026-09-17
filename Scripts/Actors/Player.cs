@@ -8,6 +8,7 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 	private const string PlayerDefinitionId = "core.player";
 
 	private Polygon2D _facingIndicator;
+	private Label _healthLabel;
 
 	// Authoritative grid position and health. Godot's own pixel Position
 	// (inherited from CharacterBody2D) is kept in sync from this and used
@@ -22,9 +23,6 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 
 	[Signal]
 	public delegate void WaitRequestedEventHandler();
-
-	[Signal]
-	public delegate void HealthChangedEventHandler(int health);
 
 	[Signal]
 	public delegate void DiedEventHandler();
@@ -63,6 +61,7 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 
 		AddChild(_facingIndicator);
 		SetFacingDirection(Vector2.Down);
+		CreateHealthDisplay();
 
 		_state.SetAttack(Attack);
 		_state.SetEquipment(Weapon.Id, DiggingTool.Id);
@@ -149,6 +148,7 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 		DiggingTool = diggingTool;
 		Position = pixelPosition;
 		SetFacingDirection(state.Facing);
+		UpdateHealthDisplay();
 	}
 
 	private void SetFacingDirection(Vector2 direction)
@@ -172,7 +172,7 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 		_state.TakeDamage(damage);
 
 		GD.Print($"Player health: {Health}");
-		EmitSignal(SignalName.HealthChanged, Health);
+		UpdateHealthDisplay();
 
 		if (Health == 0)
 		{
@@ -180,5 +180,30 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 			EmitSignal(SignalName.Died);
 			SetProcessUnhandledInput(false);
 		}
+	}
+
+	private void CreateHealthDisplay()
+	{
+		_healthLabel = new Label
+		{
+			Position = new Vector2(-20, -46),
+			Size = new Vector2(40, 16),
+			HorizontalAlignment = HorizontalAlignment.Center,
+			VerticalAlignment = VerticalAlignment.Center,
+			ZIndex = 4
+		};
+
+		_healthLabel.AddThemeFontSizeOverride("font_size", 10);
+		_healthLabel.AddThemeColorOverride("font_color", Colors.White);
+		_healthLabel.AddThemeColorOverride("font_outline_color", Colors.Black);
+		_healthLabel.AddThemeConstantOverride("outline_size", 2);
+
+		AddChild(_healthLabel);
+		UpdateHealthDisplay();
+	}
+
+	private void UpdateHealthDisplay()
+	{
+		_healthLabel.Text = $"{_state.Health}/{_state.MaxHealth}";
 	}
 }
