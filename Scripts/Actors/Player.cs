@@ -22,9 +22,6 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 	public delegate void MoveRequestedEventHandler(Vector2 direction);
 
 	[Signal]
-	public delegate void WaitRequestedEventHandler();
-
-	[Signal]
 	public delegate void DiedEventHandler();
 
 	// GameState holds this reference directly rather than copying fields, so
@@ -69,13 +66,6 @@ public partial class Player : CharacterBody2D, ICombatant, IPlayerTurnActor
 
 	public override void _UnhandledInput(InputEvent inputEvent)
 	{
-		if (inputEvent.IsActionPressed("wait"))
-		{
-			EmitSignal(SignalName.WaitRequested);
-			GetViewport().SetInputAsHandled();
-			return;
-		}
-
 		Vector2 direction = Vector2.Zero;
 
 		if (inputEvent.IsActionPressed("move_left"))
