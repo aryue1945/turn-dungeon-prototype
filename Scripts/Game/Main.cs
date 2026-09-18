@@ -88,6 +88,13 @@ public partial class Main : Node2D
 	private MonsterDefinition _pendingMonsterDefinition;
 	private GridPosition _pendingPlacementCell;
 
+	// Scenario save/load overlay (docs/DEBUG_SCENARIO_EDITOR.md slice 3):
+	// a name field plus Save, and a list of existing scenarios to Load.
+	private Control _sandboxScenarioOverlay;
+	private LineEdit _sandboxScenarioNameEdit;
+	private VBoxContainer _sandboxScenarioListBox;
+	private Label _sandboxScenarioStatusLabel;
+
 	// Which flow opened the "this will overwrite..." dialog, so its
 	// Confirm/Cancel buttons know whether to build a fresh run in place
 	// (already at the startup screen, nothing to tear down) or reload the
@@ -175,6 +182,7 @@ public partial class Main : Node2D
 		CreatePauseMenu();
 		CreateSandboxCursorVisual();
 		CreateSandboxPlacementMenu();
+		CreateSandboxScenarioMenu();
 
 		_player.MoveRequested += OnPlayerMoveRequested;
 		_player.WaitRequested += OnPlayerWaitRequested;
@@ -289,6 +297,7 @@ public partial class Main : Node2D
 		if (_inSandbox &&
 			_sandbox.State == SandboxState.Edit &&
 			!_sandboxPlacementMenuOpen &&
+			!_sandboxScenarioOverlay.Visible &&
 			GetViewport().GuiGetFocusOwner() == null &&
 			@event is InputEventKey sandboxMoveKey &&
 			sandboxMoveKey.Pressed)
@@ -316,6 +325,7 @@ public partial class Main : Node2D
 		if (_inSandbox &&
 			_sandbox.State == SandboxState.Edit &&
 			!_sandboxPlacementMenuOpen &&
+			!_sandboxScenarioOverlay.Visible &&
 			GetViewport().GuiGetFocusOwner() == null &&
 			@event is InputEventKey sandboxSelectKey &&
 			sandboxSelectKey.Pressed &&
@@ -336,6 +346,7 @@ public partial class Main : Node2D
 		if (_inSandbox &&
 			_sandbox.State == SandboxState.Edit &&
 			!_sandboxPlacementMenuOpen &&
+			!_sandboxScenarioOverlay.Visible &&
 			@event is InputEventMouseButton sandboxClick &&
 			sandboxClick.Pressed &&
 			sandboxClick.ButtonIndex == MouseButton.Left)
@@ -832,7 +843,7 @@ public partial class Main : Node2D
 		_quitButton = new Button
 		{
 			CustomMinimumSize = new Vector2(160, 40),
-			Text = "Quit"
+			Text = "Quit Game"
 		};
 		_quitButton.Pressed += OnQuitPressed;
 		endGameBox.AddChild(_quitButton);
@@ -890,6 +901,14 @@ public partial class Main : Node2D
 		_sandboxResetButton.Pressed += OnSandboxResetPressed;
 		_sandboxToolbar.AddChild(_sandboxResetButton);
 
+		Button sandboxScenarioButton = new()
+		{
+			CustomMinimumSize = new Vector2(160, 32),
+			Text = "Save / Load"
+		};
+		sandboxScenarioButton.Pressed += OpenSandboxScenarioMenu;
+		_sandboxToolbar.AddChild(sandboxScenarioButton);
+
 		Button sandboxExitButton = new()
 		{
 			CustomMinimumSize = new Vector2(160, 32),
@@ -904,6 +923,7 @@ public partial class Main : Node2D
 			_sandboxRunButton,
 			_sandboxRestartButton,
 			_sandboxResetButton,
+			sandboxScenarioButton,
 			_sandboxExitButton
 		};
 		foreach (Button button in sandboxToolbarButtons)
@@ -1453,10 +1473,18 @@ public partial class Main : Node2D
 		_pauseRestartButton.Pressed += OnPauseRestartPressed;
 		pauseBox.AddChild(_pauseRestartButton);
 
+		Button pauseQuitToMenuButton = new()
+		{
+			CustomMinimumSize = new Vector2(208, 40),
+			Text = "Quit to Menu"
+		};
+		pauseQuitToMenuButton.Pressed += OnQuitToMenuPressed;
+		pauseBox.AddChild(pauseQuitToMenuButton);
+
 		Button pauseQuitButton = new()
 		{
 			CustomMinimumSize = new Vector2(208, 40),
-			Text = "Quit"
+			Text = "Quit Game"
 		};
 		pauseQuitButton.Pressed += OnQuitPressed;
 		pauseBox.AddChild(pauseQuitButton);
@@ -1470,8 +1498,10 @@ public partial class Main : Node2D
 		pauseBox.AddChild(resumeButton);
 
 		_pauseRestartButton.FocusNeighborTop = _pauseRestartButton.GetPathTo(resumeButton);
-		_pauseRestartButton.FocusNeighborBottom = _pauseRestartButton.GetPathTo(pauseQuitButton);
-		pauseQuitButton.FocusNeighborTop = pauseQuitButton.GetPathTo(_pauseRestartButton);
+		_pauseRestartButton.FocusNeighborBottom = _pauseRestartButton.GetPathTo(pauseQuitToMenuButton);
+		pauseQuitToMenuButton.FocusNeighborTop = pauseQuitToMenuButton.GetPathTo(_pauseRestartButton);
+		pauseQuitToMenuButton.FocusNeighborBottom = pauseQuitToMenuButton.GetPathTo(pauseQuitButton);
+		pauseQuitButton.FocusNeighborTop = pauseQuitButton.GetPathTo(pauseQuitToMenuButton);
 		pauseQuitButton.FocusNeighborBottom = pauseQuitButton.GetPathTo(resumeButton);
 		resumeButton.FocusNeighborTop = resumeButton.GetPathTo(pauseQuitButton);
 		resumeButton.FocusNeighborBottom = resumeButton.GetPathTo(_pauseRestartButton);
@@ -1646,6 +1676,242 @@ public partial class Main : Node2D
 		Button directionCancelButton = CreateExportMenuButton("Cancel");
 		directionCancelButton.Pressed += CloseSandboxPlacementMenu;
 		_sandboxDirectionPage.AddChild(directionCancelButton);
+	}
+
+	// Scenario save/load (docs/DEBUG_SCENARIO_EDITOR.md slice 3): a name
+	// field plus Save writes the current scenario to its own directory
+	// under ScenarioStorage's root; the list below reads that same root and
+	// loads whichever entry is clicked. Never touches the real save
+	// directory, which RunSaveFileService only ever sees via OS.GetUserDataDir()
+	// directly, not through ScenarioStorage.
+	private void CreateSandboxScenarioMenu()
+	{
+		CanvasLayer scenarioLayer = new()
+		{
+			Layer = 10
+		};
+		AddChild(scenarioLayer);
+
+		Control menuRoot = CreateFullRectRoot(scenarioLayer);
+		menuRoot.Visible = false;
+		_sandboxScenarioOverlay = menuRoot;
+
+		ColorRect backdrop = new()
+		{
+			Color = new Color(0, 0, 0, 0.55f)
+		};
+		menuRoot.AddChild(backdrop);
+		backdrop.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		CenterContainer menuCenter = new();
+		menuRoot.AddChild(menuCenter);
+		menuCenter.SetAnchorsAndOffsetsPreset(Control.LayoutPreset.FullRect);
+
+		PanelContainer menuPanel = new()
+		{
+			CustomMinimumSize = new Vector2(340, 420)
+		};
+		menuCenter.AddChild(menuPanel);
+
+		MarginContainer menuMargin = new();
+		menuMargin.AddThemeConstantOverride("margin_left", 20);
+		menuMargin.AddThemeConstantOverride("margin_top", 16);
+		menuMargin.AddThemeConstantOverride("margin_right", 20);
+		menuMargin.AddThemeConstantOverride("margin_bottom", 16);
+		menuPanel.AddChild(menuMargin);
+
+		VBoxContainer outerBox = new();
+		outerBox.AddThemeConstantOverride("separation", 10);
+		menuMargin.AddChild(outerBox);
+
+		Label titleLabel = new()
+		{
+			CustomMinimumSize = new Vector2(300, 28),
+			Text = "Save / Load scenario",
+			HorizontalAlignment = Godot.HorizontalAlignment.Center
+		};
+		outerBox.AddChild(titleLabel);
+
+		_sandboxScenarioNameEdit = new LineEdit
+		{
+			CustomMinimumSize = new Vector2(300, 32),
+			PlaceholderText = "Scenario name"
+		};
+		outerBox.AddChild(_sandboxScenarioNameEdit);
+
+		Button saveButton = CreateExportMenuButton("Save");
+		saveButton.Pressed += SaveSandboxScenario;
+		outerBox.AddChild(saveButton);
+
+		Label loadLabel = new()
+		{
+			Text = "Load:"
+		};
+		outerBox.AddChild(loadLabel);
+
+		_sandboxScenarioListBox = new VBoxContainer();
+		_sandboxScenarioListBox.AddThemeConstantOverride("separation", 6);
+
+		ScrollContainer listScroll = new()
+		{
+			CustomMinimumSize = new Vector2(300, 180)
+		};
+		listScroll.AddChild(_sandboxScenarioListBox);
+		outerBox.AddChild(listScroll);
+
+		_sandboxScenarioStatusLabel = new Label
+		{
+			CustomMinimumSize = new Vector2(300, 32),
+			AutowrapMode = TextServer.AutowrapMode.WordSmart
+		};
+		outerBox.AddChild(_sandboxScenarioStatusLabel);
+
+		Button closeButton = CreateExportMenuButton("Close");
+		closeButton.Pressed += CloseSandboxScenarioMenu;
+		outerBox.AddChild(closeButton);
+	}
+
+	private void OpenSandboxScenarioMenu()
+	{
+		_sandboxScenarioStatusLabel.Text = string.Empty;
+		_sandboxScenarioNameEdit.Text = string.Empty;
+		RefreshSandboxScenarioList();
+		_sandboxScenarioOverlay.Visible = true;
+		_sandboxScenarioNameEdit.GrabFocus();
+	}
+
+	private void CloseSandboxScenarioMenu()
+	{
+		_sandboxScenarioOverlay.Visible = false;
+	}
+
+	private void RefreshSandboxScenarioList()
+	{
+		foreach (Node child in _sandboxScenarioListBox.GetChildren())
+			child.QueueFree();
+
+		foreach (string name in ScenarioStorage.ListScenarios(OS.GetUserDataDir()))
+		{
+			Button loadButton = CreateExportMenuButton(name);
+			loadButton.CustomMinimumSize = new Vector2(280, 32);
+			loadButton.Pressed += () => LoadSandboxScenario(name);
+			_sandboxScenarioListBox.AddChild(loadButton);
+		}
+	}
+
+	// Captures the live sandbox state (map, player, every placed enemy)
+	// through the same RunSaveEnvelope/RunSaveFileService path the real
+	// save uses, but under ScenarioStorage's directory - never
+	// OS.GetUserDataDir() directly, so a scenario can never collide with or
+	// overwrite the player's real save.
+	private void SaveSandboxScenario()
+	{
+		if (!ScenarioStorage.TryValidateScenarioName(_sandboxScenarioNameEdit.Text, out string name, out string error))
+		{
+			_sandboxScenarioStatusLabel.Text = error;
+			return;
+		}
+
+		List<MonsterDefinition> enemyDefinitions = _enemies.Select(enemy => enemy.Definition).ToList();
+		RunSaveEnvelope envelope = RunSaveEnvelope.Capture(_gameState, _player.Weapon, _player.DiggingTool, enemyDefinitions);
+		string directory = ScenarioStorage.DirectoryFor(OS.GetUserDataDir(), name);
+
+		RunSaveFileService.Save(directory, envelope);
+
+		_sandboxScenarioStatusLabel.Text = $"Saved scenario \"{name}\".";
+		RefreshSandboxScenarioList();
+	}
+
+	// Loads a scenario back into Edit, resolving its ids against the
+	// current spawn pool exactly as Continue does for the real save
+	// (TryResolveSaveDefinitions), so a mod removed since the scenario was
+	// saved is reported rather than silently restoring against stale
+	// definitions.
+	private void LoadSandboxScenario(string name)
+	{
+		string directory = ScenarioStorage.DirectoryFor(OS.GetUserDataDir(), name);
+		SaveFileLoadOutcome outcome = RunSaveFileService.Load(directory);
+
+		if (outcome.Result != SaveFileLoadResult.Loaded && outcome.Result != SaveFileLoadResult.LoadedFromBackup)
+		{
+			_sandboxScenarioStatusLabel.Text = $"Could not load \"{name}\": {outcome.Error}";
+			return;
+		}
+
+		if (!TryResolveSaveDefinitions(
+			outcome.Envelope,
+			out WeaponDefinition weapon,
+			out DiggingToolDefinition tool,
+			out List<MonsterDefinition> enemyDefinitions,
+			out string error))
+		{
+			_sandboxScenarioStatusLabel.Text = $"Could not load \"{name}\": {error}";
+			return;
+		}
+
+		CloseSandboxScenarioMenu();
+		RestoreSandboxFromEnvelope(outcome.Envelope, weapon, tool, enemyDefinitions);
+
+		GD.Print($"Loaded sandbox scenario \"{name}\".");
+	}
+
+	// Mirrors RestoreRun, but lands in Sandbox's Edit state with the loaded
+	// state captured as the new Reset point, instead of resuming live turn
+	// input the way Continue does.
+	private void RestoreSandboxFromEnvelope(
+		RunSaveEnvelope envelope,
+		WeaponDefinition weapon,
+		DiggingToolDefinition tool,
+		List<MonsterDefinition> enemyDefinitions)
+	{
+		GameSnapshot snapshot = envelope.Snapshot;
+
+		_dungeonSeed = envelope.Seed;
+		_dungeonMap = GameSnapshotRestore.RestoreMap(snapshot.Grid, envelope.Seed);
+		BuildAndRenderDungeon();
+
+		_player.Attack.Equip(weapon.PrimaryAttack);
+		ActorState playerState = GameSnapshotRestore.RestoreActor(snapshot.Player, _player.Attack);
+		_player.RestoreFrom(playerState, weapon, tool, CellToPosition(snapshot.Player.Position));
+		UpdateWeaponDisplay(weapon);
+		_toolLabel.Text = $"Tool: {tool.Name}";
+
+		_gameState = new GameState(_dungeonMap, playerState);
+		_gameState.RestoreTurnNumber(snapshot.TurnNumber);
+
+		CreateFollowingCamera();
+
+		foreach (Enemy enemy in _enemies)
+			enemy.QueueFree();
+
+		_enemies.Clear();
+
+		for (int i = 0; i < snapshot.Enemies.Count; i++)
+		{
+			ActorSnapshot enemySnapshot = snapshot.Enemies[i];
+			MonsterDefinition definition = enemyDefinitions[i];
+			Vector2 pixelPosition = CellToPosition(enemySnapshot.Position);
+
+			Enemy enemy = _enemyScene.Instantiate<Enemy>();
+			enemy.Name = $"{definition.Id.Replace('.', '_')}{i + 1}";
+			enemy.Configure(definition, enemySnapshot.Position, pixelPosition, IsWallAt);
+			AddChild(enemy);
+			enemy.RestoreFrom(enemySnapshot, pixelPosition);
+
+			_enemies.Add(enemy);
+			_gameState.AddEnemy(enemy.State);
+		}
+
+		_currentPlayerZoneId = -1;
+
+		_sandbox = new ScenarioSandbox(SandboxWidth, SandboxHeight, snapshot.Player.Position);
+		_sandboxInitialSnapshot = GameSnapshot.Capture(_gameState);
+		_sandboxPlaySnapshot = null;
+		_sandboxPlayEnemyDefinitions = null;
+
+		_debugHistory = new DebugHistory(GameSnapshot.Capture(_gameState));
+
+		EnterSandboxEditState();
 	}
 
 	private static Button CreateSandboxCategoryButton(string text)
@@ -1829,6 +2095,12 @@ public partial class Main : Node2D
 			return;
 		}
 
+		if (_sandboxScenarioOverlay.Visible)
+		{
+			CloseSandboxScenarioMenu();
+			return;
+		}
+
 		if (_inSandbox)
 		{
 			if (_sandbox.State == SandboxState.Play)
@@ -1890,6 +2162,16 @@ public partial class Main : Node2D
 	private void OnQuitPressed()
 	{
 		GetTree().Quit();
+	}
+
+	// Leaves the current run in progress (unlike Restart, which abandons it)
+	// and returns to the startup screen via the same "reload the scene"
+	// mechanism Sandbox's Exit uses - the last autosave stays resumable, so
+	// no overwrite confirmation is needed here.
+	private void OnQuitToMenuPressed()
+	{
+		_pauseMenuOverlay.Visible = false;
+		GetTree().ReloadCurrentScene();
 	}
 
 	// Shows the main menu on every launch so Settings is always reachable.
