@@ -267,6 +267,130 @@ public sealed class WeaponAttackTests
 		Assert.That(enemy.Health, Is.EqualTo(2));
 	}
 
+	// Regression coverage (NEXT_STEPS step 5, slice a): the existing
+	// direction-specific tests above only exercise Vector2.Right (and one
+	// Vector2.Up case). These cover all four cardinal directions so a
+	// future change to GetPatternPosition's rotation math cannot silently
+	// break Up/Down/Left while Right still passes.
+	[TestCase(1, 0)]
+	[TestCase(-1, 0)]
+	[TestCase(0, 1)]
+	[TestCase(0, -1)]
+	public void BasicSword_HitsEnemyOneCellForward_InEveryCardinalDirection(int dx, int dy)
+	{
+		Vector2 direction = new(dx, dy);
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(dx, dy));
+
+		AttackTurnResult result = UseWeapon(
+			WeaponDefinitions.BasicSword,
+			player,
+			new[] { enemy },
+			direction: direction
+		);
+
+		Assert.That(result, Is.EqualTo(AttackTurnResult.Attacked));
+		Assert.That(enemy.Health, Is.EqualTo(2));
+	}
+
+	[TestCase(1, 0)]
+	[TestCase(-1, 0)]
+	[TestCase(0, 1)]
+	[TestCase(0, -1)]
+	public void LongSword_HitsEnemyTwoCellsForward_InEveryCardinalDirection(int dx, int dy)
+	{
+		Vector2 direction = new(dx, dy);
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(dx * 2, dy * 2));
+
+		AttackTurnResult result = UseWeapon(
+			WeaponDefinitions.LongSword,
+			player,
+			new[] { enemy },
+			direction: direction
+		);
+
+		Assert.That(result, Is.EqualTo(AttackTurnResult.Attacked));
+		Assert.That(enemy.Health, Is.EqualTo(2));
+	}
+
+	[TestCase(1, 0)]
+	[TestCase(-1, 0)]
+	[TestCase(0, 1)]
+	[TestCase(0, -1)]
+	public void WarHammer_PushesSurvivingTargetOneCellBack_InEveryCardinalDirection(int dx, int dy)
+	{
+		Vector2 direction = new(dx, dy);
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant enemy = EnemyAt(new GridPosition(dx, dy));
+
+		AttackResolver.TryAttack(
+			player,
+			direction,
+			new AttackState(WeaponDefinitions.WarHammer.PrimaryAttack),
+			new List<ICombatant> { player, enemy },
+			_ => false,
+			out AttackExecutionDetail detail
+		);
+
+		GridPosition expectedDestination = new(dx * 2, dy * 2);
+		Assert.That(enemy.Health, Is.EqualTo(2));
+		Assert.That(enemy.GridPosition, Is.EqualTo(expectedDestination));
+		Assert.That(detail.Hits[0].KnockedBackTo, Is.EqualTo(expectedDestination));
+	}
+
+	// Every built-in weapon currently only hits AttackOffset(Forward, 0) -
+	// Right is always zero, so a rotation bug in the sideways axis would
+	// pass every test above. This uses a custom pattern with a nonzero
+	// Right component (front-left, AttackOffset(1, -1)) to prove the
+	// sideways offset rotates correctly with facing, not just Forward.
+	[TestCase(1, 0, /* right in world space when facing +X */ 0, 1)]
+	[TestCase(-1, 0, 0, -1)]
+	[TestCase(0, 1, -1, 0)]
+	[TestCase(0, -1, 1, 0)]
+	public void CustomFrontLeftOffset_HitsCorrectCell_InEveryCardinalDirection(
+		int facingX, int facingY, int worldRightX, int worldRightY)
+	{
+		Vector2 facing = new(facingX, facingY);
+		AttackDefinition frontLeft = new(
+			name: "Front-Left Test Pattern",
+			damage: 1,
+			preparationTurns: 0,
+			detectionOffsets: new[] { new AttackOffset(1, -1) },
+			attackOffsets: new[] { new AttackOffset(1, -1) },
+			targetRule: AttackTargetRule.OpponentsOnly,
+			stopsAtWalls: true,
+			maxTargets: 1
+		);
+
+		// Front-left of `facing` is one cell forward, minus one cell of
+		// world-right (i.e. plus one cell of world-left).
+		GridPosition frontLeftCell = new(
+			facingX - worldRightX,
+			facingY - worldRightY
+		);
+		// Directly forward must NOT be hit by a pattern with Right = -1.
+		GridPosition straightAheadCell = new(facingX, facingY);
+
+		FakeCombatant player = PlayerAt(new GridPosition(0, 0));
+		FakeCombatant frontLeftEnemy = EnemyAt(frontLeftCell);
+		FakeCombatant straightAheadEnemy = EnemyAt(straightAheadCell);
+
+		AttackTurnResult result = AttackResolver.TryAttack(
+			player,
+			facing,
+			new AttackState(frontLeft),
+			new List<ICombatant> { player, frontLeftEnemy, straightAheadEnemy },
+			_ => false,
+			out AttackExecutionDetail detail
+		);
+
+		Assert.That(result, Is.EqualTo(AttackTurnResult.Attacked));
+		Assert.That(frontLeftEnemy.Health, Is.EqualTo(2), "The front-left cell should be hit.");
+		Assert.That(straightAheadEnemy.Health, Is.EqualTo(3), "Straight ahead is a different cell and must not be hit.");
+		Assert.That(detail.AffectedCells, Is.EqualTo(new List<GridPosition> { frontLeftCell }));
+	}
+
 	private static AttackTurnResult UseWeapon(
 		WeaponDefinition weapon,
 		FakeCombatant player,

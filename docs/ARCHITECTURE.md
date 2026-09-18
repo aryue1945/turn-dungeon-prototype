@@ -1,6 +1,6 @@
 # Architecture
 
-Reviewed against main `c4a5d2e99236852b8374e8c733f0ac521deeff20` on 2026-09-16 (UTC). Status describes source inspection, not a runtime test.
+Reviewed against main `c4a5d2e99236852b8374e8c733f0ac521deeff20` on 2026-09-16 (UTC). Status describes source inspection, not a runtime test. The "Proposed: scoped player rules" section was added on 2026-09-18 from [Player rules handoff](Claude_Player_Rules_Handoff.md), which reviewed `be1eeba`. None of it is implemented.
 
 ## Current implementation
 
@@ -69,7 +69,7 @@ Preserve the current sequence during extraction:
 6. Finalize removals and victory checks.
 7. Single completion boundary: increment turn, capture state and structured outcomes, append debug history, enqueue autosave, and update presentation. This must also run on terminal turns that skip the enemy phase. Done: `Main.FinishTurn` is the single shared call site both branches of `OnPlayerMoveRequested` funnel through - `GameState.CompleteTurn()`, `RecordTransition` (debug history) and `AutosaveCurrentRun()` all happen there exactly once per turn, including a turn that ends in victory/death.
 
-Blocked movement and digging consume a turn. Menus and camera controls do not. Wait is not yet implemented. Snapshot work must not add another enemy phase.
+Blocked movement and digging consume a turn. Menus and camera controls do not. There is no Wait command: it was removed in `7011cc6`, so do not restore it as a side effect of other work. Snapshot work must not add another enemy phase.
 
 An optional environment phase belongs before final capture if later enabled. Main currently never calls DungeonMap.AdvanceTurn; keep that disabled during extraction.
 
@@ -93,9 +93,32 @@ Zone connections describe generation; current cells determine traversal. Neutral
 
 ## Combat, equipment and mods
 
-Keep definitions separate from per-actor runtime state. Protect shared offset collections when converting combat to grid coordinates. Ordered-line wall blocking remains suitable for swords; define occlusion before adding sweeps or area patterns.
+Keep definitions separate from per-actor runtime state. Protect shared offset collections when converting combat to grid coordinates. Ordered-line wall blocking remains suitable for swords; define occlusion before adding sweeps or area patterns. Today both detection and execution in `AttackResolver` `break` at the first wall, so the rest of the list is skipped. That is ray semantics. An area pattern needs per-cell filtering instead, and it must not silently inherit the ray rule.
 
 Preserve MonsterDefinition.Id, movement IDs and attack-pattern IDs through the migration. WeaponDefinition and DiggingToolDefinition now have a stable `Id` (`core.basic_sword`, `core.long_sword`, `core.basic_shovel`) via `IEquipment.Id`, mirrored into `ActorState.WeaponId`/`ToolId` so a save can reference them without relying on display names or the Godot node. Only MonsterDefinition.PrimaryAttack (the first attack) is currently used. StatusEffectId and LootTableId are metadata without consumers.
+
+### Proposed: scoped player rules (not implemented)
+
+Roadmap: [Next steps](NEXT_STEPS.md) step 5. Design intent: [Game design](GAME_DESIGN.md) "Player action rules". This section says where the proposal attaches to current code. Nothing below exists yet, except where it names existing code.
+
+- **Entry point stays.** `TurnResolver.ResolvePlayerAction` keeps its attack -> dig -> blocked -> move order. Each step collects the active rules for its own category: attack, dig or move. No event bus, object-pair matrix, global object scan, ECS or generic effect language.
+- **Rule collection.** One small method collects rules from the player's active sources: the current `Weapon`/`DiggingTool` slots, inherent abilities and active statuses. Unequipped inventory contributes nothing. Adapt the two existing slots before adding any collection. `EquippedItems`, `PersonalAttackRules` and `ActiveStatuses` appeared in earlier examples, but they are proposals, not APIs. The resolver consumes rules without checking concrete item types.
+- **Composition.**
+  - Each rule carries priority as inspectable metadata and a separate operation: add, replace or cancel.
+  - The base is built first, then additive modifiers apply.
+  - Replacement scope is defined per rule.
+  - Ties use a fixed, documented key.
+  - A cancellation cannot be undone by a later modifier.
+- **No shared mutation.** Built-in weapon definitions and their offset arrays are static and shared. Composition builds a fresh resolved description for each action. Tests must show that another actor, a later action, and the weapon after a status expires all still see base values.
+- **Outcomes.** Keep `NoAttack`/`Preparing`/`Attacked` distinct. A cancellation needs its own terminal outcome, and only a genuine `NoAttack` falls through to dig/move. Record whether each outcome consumes a turn.
+- **Geometry.** Reuse `AttackOffset` `(Forward, Right)`. Extract `AttackResolver.GetPatternPosition` into a shared helper only when a second consumer needs it, such as a dig pattern whose origin is the wall. Keep `DetectionOffsets` (activation, which respects walls) separate from `AttackOffsets` (hits).
+- **Move rules.** Rules that change reach or permission run before the move is committed. Trail and landing rules run after a successful move only.
+- **Preparation.** Keep the existing preparation and locked direction, and do not call `AttackState.Equip` every action (it resets preparation). It is still open whether modifiers are captured when preparation starts or recomputed at execution.
+- **Dig splash.** `DigResolver` damages terrain only, and `ICombatant` covers actors only. Splash reuses both existing damage paths and excludes the player by identity. Props need a concrete representation before they can be claimed as damageable.
+- **Statuses and persistence.** Add a status instance to `ActorState` only for a concrete status. Persist stable status IDs plus runtime values, never rule objects or delegates, through `GameSnapshot`/`GameSnapshotRestore`, `RunSaveSerializer`, scenario storage and debug history. Save slots stay isolated.
+- **Diagnostics.** Extend `AttackExecutionDetail` and the debug-history export with each rule's source, order, condition result, changes and final targets, plus dig/move consequences as needed. Not a replay engine.
+- **Content validation.** `ContentFingerprinter.DescribeAttack` currently omits offsets, `Knockback` and `StatusEffectId`. Adding geometry or rule data to it changes existing saves' fingerprints, so decide that compatibility effect explicitly before extending it.
+- **Enemies.** Behaviors stay in `IEnemyMovementBehavior` implementations. They may reuse shared combat and geometry helpers but do not consume player rules.
 
 Mod directory/file enumeration is sorted and duplicate ids are rejected (`MonsterModLoader`, `Main.BuildSpawnPool` - NEXT_STEPS milestone 5). Missing or changed required definitions produce a clear, useful error and disable Continue rather than silently resetting actors (`Main.TryResolveSaveDefinitions`'s content-fingerprint comparison). Per-definition fingerprint diagnostics (identifying exactly which definition changed, not just that the combined fingerprint differs) and exported-build mod-folder resolution remain deferred - see NEXT_STEPS' Architecture backlog. Details: [Modding](MODDING.md).
 
@@ -115,12 +138,12 @@ The map seed reproduces generation deterministically; enemy roster/placement is 
 
 Completed: shared map blocking, digging/tool separation, cell refresh, door opening graphics, keyboard weapon menu, monster definitions and reusable behaviors, Player's and Enemy's GridPosition/health extracted into ActorState, `ICombatant`/`AttackResolver`/Main's occupancy and wall queries converted from pixel `Vector2` to `GridPosition`, facing and the chaser's prepared-move flag moved into ActorState, ActorState instance/definition ids, stable weapon/tool ids, GameState introduced and kept in sync by Main, equipment ids and AttackState referenced from ActorState (NEXT_STEPS milestone 1), TurnResolver.ResolvePlayerAction/ResolveEnemyAction extracted, movement behaviors returning explicit outcomes, victory/death reading from GameState (milestone 2), GameSnapshot.Capture, the DebugHistory ring, wiring it into Main's turn loop, and the Last 3/5/10-turn export menu with per-attack detail and derived cell ids (milestone 3), GameSnapshotRestore, RunSaveEnvelope/RunSaveSerializer's versioned JSON round-trip, RunSaveFileService's safe write/backup-recovery file I/O, and Main's full Continue/New Run/autosave/pause-menu flow (milestone 4), and duplicate-id rejection, stable content ordering, seeded encounter generation with an explicit spawn budget, and save-content fingerprint validation (milestone 5). Milestones 1-5 are all done.
 
-Next: the active roadmap is gameplay content, not more architecture - manual verification of the save/resume flow, an explicit Wait command, then a first tactical slice (one weapon, one enemy, one hazard, one encounter). See [Next steps](NEXT_STEPS.md) for the active roadmap and the architecture backlog of deferred items.
+Next: the active roadmap is gameplay content, not more architecture - the tactical slice (War Hammer, Charging Beetle, Spike Trap) is done pending playtest. The debug scenario editor is in progress. Scoped player rules (attack/dig/move, proposed above) are next. See [Next steps](NEXT_STEPS.md) for the active roadmap and the architecture backlog of deferred items.
 
 ## Verification and deferred work
 
 There are 147 test methods: generator/terrain 8, weapon 6 plus 3 for attack-detail (attacker/target/damage/health/defeated), digging 4, dynamic terrain 4, mod loader 8 plus 2 for duplicate-id rejection and enumeration-order independence, ActorState 14, GameState 8 plus 1 for RestoreTurnNumber, TurnResolver 6, enemy movement behaviors 7, GameSnapshot 6 plus 2 for derived per-cell actor ids, DebugHistory 9 plus 4 for the selected-slice-export methods, DebugHistoryExporter 3 plus 3 for the context/identity/attack-detail export, GameSnapshotRestore 5, actor restore 4, run save serialization 6 plus 4 for IsComplete/SavedAtUtc/ContentFingerprint, the save-file service 8, definition-registry lookups 8 (FindById plus duplicate-id regression guards), encounter planning 8, and content fingerprinting 6.
 
-Highest-value remaining additions, per NEXT_STEPS' active roadmap: manual verification of the save/resume flow (no automated coverage of Main itself), an explicit Wait command, and the first tactical gameplay slice. Architecture items with no current gameplay requirement (per-definition fingerprint diagnostics, save schema migration, exact RNG continuation, exported-build mod handling, full replay, async saves, a generalized hazard framework, previous-floor persistence, complex animation/input-lock handling) are deferred to NEXT_STEPS' Architecture backlog rather than built speculatively.
+Highest-value remaining additions, per NEXT_STEPS' active roadmap: manual verification of the save/resume flow and the scenario editor (no automated coverage of Main itself). After that come regression coverage of current weapon, dig and shovel geometry, and the smallest test-only attack-rule composition seam (NEXT_STEPS step 5). Architecture items with no current gameplay requirement (per-definition fingerprint diagnostics, save schema migration, exact RNG continuation, exported-build mod handling, full replay, async saves, a generalized hazard framework, previous-floor persistence, complex animation/input-lock handling) are deferred to NEXT_STEPS' Architecture backlog rather than built speculatively.
 
 No ECS, global event bus, DI framework, generic ability scripting, room streaming or full replay system. Keep full snapshots until measured size justifies a different representation.

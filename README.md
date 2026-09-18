@@ -65,5 +65,5 @@ The active direction now is gameplay content, not more architecture - see [Next 
 
 - The enemy-phase loop, top-of-turn input rejection, and the turn's completion boundary are still Main's own code rather than `TurnResolver`'s - a deliberate choice (moving them would relocate complexity, not reduce it), not an oversight.
 - RNG-stream continuation after loading is out of scope: Continue restores committed state, not an in-flight random sequence.
-- No persistent progression or difficulty modifiers yet (roadmap item 5).
-- Closed-door blocking, floor transitions/objectives, and obstacle-aware navigation remain open (roadmap item 4).
+- No persistent progression or difficulty modifiers yet (roadmap item 12).
+- Floor transitions/objectives remain open (roadmap item 11); closed-door blocking is a deferred gameplay decision. Chase-type enemies already use wall-aware pathfinding (`EnemyPathfinding`).
