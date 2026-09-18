@@ -15,7 +15,7 @@ polygon = PackedVector2Array(-11, 7, -7, 4, 7, 4, 11, 7, 7, 10, -7, 10)
 color = Color(0, 0, 0, 0.35)
 
 [node name="Sprite2D" type="Sprite2D" parent="." unique_id=1456312894]
-offset = Vector2(0, -8)
+offset = Vector2(0, -16)
 texture = ExtResource("2_qi2p4")
 
 [node name="CollisionShape2D" type="CollisionShape2D" parent="." unique_id=1127124353]
