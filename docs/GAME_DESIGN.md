@@ -46,7 +46,6 @@ Current behavior to preserve during refactoring:
 - Defeated enemies do not act.
 - Enemy execution stops when the player dies.
 - Camera and menu actions consume no turns.
-- An explicit wait command (Space) consumes one turn without moving, attacking or digging.
 - Spike traps tick and damage in an environment phase after enemies act, before the turn's snapshot/autosave.
 
 ## Weapons

@@ -22,8 +22,7 @@ public enum PlayerActionKind
 	TerrainDug,
 	TerrainDestroyed,
 	Moved,
-	Blocked,
-	Waited
+	Blocked
 }
 
 // What resolving one player action decided, in enough detail for the caller
@@ -85,11 +84,6 @@ public sealed class PlayerActionOutcome
 
 	public static PlayerActionOutcome Blocked(GridPosition targetCell) =>
 		new(PlayerActionKind.Blocked, targetCell, null, 0, false, null);
-
-	// No target cell/attack/door - waiting deliberately does nothing but
-	// consume the turn.
-	public static PlayerActionOutcome Waited() =>
-		new(PlayerActionKind.Waited, null, null, 0, false, null);
 }
 
 // What one enemy's turn did (from its EnemyActionResult - see
@@ -131,15 +125,6 @@ public sealed class EnemyActionOutcome
 // a real node the way Enemy/Player themselves already do.
 public static class TurnResolver
 {
-	// The explicit Wait command: deliberately makes no mutation at all and
-	// always succeeds, unlike every other player action - kept as a real
-	// TurnResolver entry point rather than Main synthesizing the outcome
-	// itself, so "what a resolved player action can be" has one source.
-	public static PlayerActionOutcome ResolvePlayerWait()
-	{
-		return PlayerActionOutcome.Waited();
-	}
-
 	public static PlayerActionOutcome ResolvePlayerAction(
 		IPlayerTurnActor player,
 		Vector2 direction,
