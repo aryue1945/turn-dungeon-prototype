@@ -138,6 +138,115 @@ public sealed class TurnResolverTests
 		Assert.That(player.MoveCallCount, Is.EqualTo(0));
 	}
 
+	// Regression coverage (NEXT_STEPS step 5, slice a): the tests above
+	// only exercise Vector2.Right (attack/dig/move) and Vector2.Left
+	// (blocked). These cover the whole attack -> dig -> blocked -> move
+	// chain in all four cardinal directions, since ResolvePlayerAction's
+	// targetCell math and every collaborator it calls (AttackResolver,
+	// DigResolver, DungeonMap.OpenDoor) take a raw Vector2 direction.
+	[TestCase(1, 0)]
+	[TestCase(-1, 0)]
+	[TestCase(0, 1)]
+	[TestCase(0, -1)]
+	public void ResolvePlayerAction_AttacksAdjacentEnemy_InEveryCardinalDirection(int dx, int dy)
+	{
+		Vector2 direction = new(dx, dy);
+		DungeonMap map = CreateOpenRoom();
+		GridPosition center = new(2, 2);
+		FakePlayerActor player = new(center, WeaponDefinitions.BasicSword.PrimaryAttack);
+		FakeCombatant enemy = new(new GridPosition(2 + dx, 2 + dy), CombatFaction.Enemy);
+
+		PlayerActionOutcome outcome = TurnResolver.ResolvePlayerAction(
+			player,
+			direction,
+			new List<ICombatant> { player, enemy },
+			map,
+			position => !map.IsWalkable(position.X, position.Y)
+		);
+
+		Assert.That(outcome.Kind, Is.EqualTo(PlayerActionKind.Attacked));
+		Assert.That(enemy.Health, Is.EqualTo(2));
+		Assert.That(player.MoveCallCount, Is.EqualTo(0));
+	}
+
+	[TestCase(1, 0)]
+	[TestCase(-1, 0)]
+	[TestCase(0, 1)]
+	[TestCase(0, -1)]
+	public void ResolvePlayerAction_DestroysBreakableWallWhenNoAttackTarget_InEveryCardinalDirection(int dx, int dy)
+	{
+		Vector2 direction = new(dx, dy);
+		DungeonMap map = CreateOpenRoom();
+		GridPosition center = new(2, 2);
+		GridPosition target = new(2 + dx, 2 + dy);
+		map.SetTerrain(target.X, target.Y, TerrainKind.BreakableWall);
+		FakePlayerActor player = new(center, WeaponDefinitions.BasicSword.PrimaryAttack);
+
+		PlayerActionOutcome outcome = TurnResolver.ResolvePlayerAction(
+			player,
+			direction,
+			new List<ICombatant> { player },
+			map,
+			position => !map.IsWalkable(position.X, position.Y)
+		);
+
+		Assert.That(outcome.Kind, Is.EqualTo(PlayerActionKind.TerrainDestroyed));
+		Assert.That(outcome.TargetCell, Is.EqualTo(target));
+		Assert.That(map.GetCell(target.X, target.Y).Terrain.Kind, Is.EqualTo(TerrainKind.Floor));
+		Assert.That(player.MoveCallCount, Is.EqualTo(0));
+	}
+
+	[TestCase(1, 0)]
+	[TestCase(-1, 0)]
+	[TestCase(0, 1)]
+	[TestCase(0, -1)]
+	public void ResolvePlayerAction_MovesIntoOpenFloor_InEveryCardinalDirection(int dx, int dy)
+	{
+		Vector2 direction = new(dx, dy);
+		DungeonMap map = CreateOpenRoom();
+		GridPosition center = new(2, 2);
+		FakePlayerActor player = new(center, WeaponDefinitions.BasicSword.PrimaryAttack);
+
+		PlayerActionOutcome outcome = TurnResolver.ResolvePlayerAction(
+			player,
+			direction,
+			new List<ICombatant> { player },
+			map,
+			position => !map.IsWalkable(position.X, position.Y)
+		);
+
+		Assert.That(outcome.Kind, Is.EqualTo(PlayerActionKind.Moved));
+		Assert.That(player.MoveCallCount, Is.EqualTo(1));
+		Assert.That(player.GridPosition, Is.EqualTo(new GridPosition(2 + dx, 2 + dy)));
+	}
+
+	[TestCase(1, 0)]
+	[TestCase(-1, 0)]
+	[TestCase(0, 1)]
+	[TestCase(0, -1)]
+	public void ResolvePlayerAction_ReturnsBlockedAtSolidWall_InEveryCardinalDirection(int dx, int dy)
+	{
+		Vector2 direction = new(dx, dy);
+		DungeonMap map = CreateOpenRoom();
+		// One step toward the boundary from center so the next step (the
+		// target cell) lands exactly on the surrounding solid wall.
+		GridPosition start = new(2 + dx, 2 + dy);
+		GridPosition target = new(2 + (dx * 2), 2 + (dy * 2));
+		FakePlayerActor player = new(start, WeaponDefinitions.BasicSword.PrimaryAttack);
+
+		PlayerActionOutcome outcome = TurnResolver.ResolvePlayerAction(
+			player,
+			direction,
+			new List<ICombatant> { player },
+			map,
+			position => !map.IsWalkable(position.X, position.Y)
+		);
+
+		Assert.That(outcome.Kind, Is.EqualTo(PlayerActionKind.Blocked));
+		Assert.That(outcome.TargetCell, Is.EqualTo(target));
+		Assert.That(player.MoveCallCount, Is.EqualTo(0));
+	}
+
 	// A solid-walled 5x5 room, floor everywhere inside.
 	private static DungeonMap CreateOpenRoom()
 	{

@@ -83,10 +83,10 @@ public sealed class EnemyMovementBehaviorTests
 	}
 
 	[Test]
-	public void ChargingBeetleBehavior_FirstTurnPreparesTowardThePlayer()
+	public void ChargingBeetleBehavior_FirstTurnPreparesTowardThePlayerInRange()
 	{
 		FakeMovementHost host = new(new GridPosition(0, 0));
-		FakeCombatant player = new(new GridPosition(0, 4));
+		FakeCombatant player = new(new GridPosition(0, 2));
 
 		EnemyActionResult result = new ChargingBeetleBehavior().TakeTurn(
 			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
@@ -97,11 +97,32 @@ public sealed class EnemyMovementBehaviorTests
 		Assert.That(host.MoveForwardCallCount, Is.EqualTo(0));
 	}
 
+	[TestCase(0, -2, TestName = "ChargingBeetleBehavior_DetectsThePlayerAbove")]
+	[TestCase(0, 2, TestName = "ChargingBeetleBehavior_DetectsThePlayerBelow")]
+	[TestCase(-2, 0, TestName = "ChargingBeetleBehavior_DetectsThePlayerToTheLeft")]
+	[TestCase(2, 0, TestName = "ChargingBeetleBehavior_DetectsThePlayerToTheRight")]
+	public void ChargingBeetleBehavior_DetectsAClearLaneInEveryCardinalDirection(int playerX, int playerY)
+	{
+		// Detection is computed fresh from the beetle's and player's grid
+		// positions every turn - it never reads the beetle's current
+		// facing, so a lane in any of the four cardinal directions is found
+		// regardless of which way the beetle happened to be facing before
+		// this turn (InitialFacingDirection is Down, left unrelated here).
+		FakeMovementHost host = new(new GridPosition(0, 0));
+		FakeCombatant player = new(new GridPosition(playerX, playerY));
+
+		EnemyActionResult result = new ChargingBeetleBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Prepared));
+		Assert.That(host.FacingDirection, Is.EqualTo(new Vector2(playerX, playerY).Normalized()));
+	}
+
 	[Test]
 	public void ChargingBeetleBehavior_SecondTurnChargesTwoCellsWhenClear()
 	{
 		FakeMovementHost host = new(new GridPosition(0, 0));
-		FakeCombatant player = new(new GridPosition(0, 4));
+		FakeCombatant player = new(new GridPosition(0, 2));
 		ChargingBeetleBehavior behavior = new();
 		host.NextMoveResult = EnemyActionResult.Moved;
 
@@ -118,7 +139,7 @@ public sealed class EnemyMovementBehaviorTests
 	public void ChargingBeetleBehavior_StopsAfterOneCellWhenTheSecondIsBlocked()
 	{
 		FakeMovementHost host = new(new GridPosition(0, 0));
-		FakeCombatant player = new(new GridPosition(0, 4));
+		FakeCombatant player = new(new GridPosition(0, 2));
 		ChargingBeetleBehavior behavior = new();
 		host.NextMoveResult = EnemyActionResult.Blocked;
 
@@ -145,6 +166,97 @@ public sealed class EnemyMovementBehaviorTests
 		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Attacked));
 		Assert.That(result.AttackName, Is.EqualTo("Charge Slam"));
 		Assert.That(host.MoveForwardCallCount, Is.EqualTo(1), "An attack on the first step must not attempt a second.");
+	}
+
+	[Test]
+	public void ChargingBeetleBehavior_DoesNotChargeAPlayerBeyondChargeRange()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0));
+		FakeCombatant player = new(new GridPosition(0, 3));
+		host.NextMoveResult = EnemyActionResult.Moved;
+
+		EnemyActionResult result = new ChargingBeetleBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.Not.EqualTo(EnemyActionKind.Prepared));
+		Assert.That(host.HasPreparedMove, Is.False, "Out of charge range - this should wander, not telegraph.");
+	}
+
+	[Test]
+	public void ChargingBeetleBehavior_DoesNotChargeThroughAWallOnTheSameRow()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0))
+		{
+			// A wall sits between the beetle and the player on their shared
+			// row, within charge range, so the lane is not clear even
+			// though they are on-axis and in range.
+			IsWallAtFunc = position => position == new GridPosition(1, 0)
+		};
+		FakeCombatant player = new(new GridPosition(2, 0));
+		host.NextMoveResult = EnemyActionResult.Moved;
+
+		EnemyActionResult result = new ChargingBeetleBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.Not.EqualTo(EnemyActionKind.Prepared));
+		Assert.That(host.HasPreparedMove, Is.False);
+	}
+
+	[Test]
+	public void ChargingBeetleBehavior_WandersIntoARandomOpenDirectionWithNoTelegraph()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0));
+		// Off-axis - no charge lane exists no matter the range.
+		FakeCombatant player = new(new GridPosition(3, 4));
+		host.NextMoveResult = EnemyActionResult.Moved;
+		host.RandomIndexToReturn = 2; // All four cardinal directions are open; pick the third.
+
+		EnemyActionResult result = new ChargingBeetleBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Moved));
+		Assert.That(host.HasPreparedMove, Is.False, "A wander step needs no telegraph.");
+		Assert.That(host.MoveForwardCallCount, Is.EqualTo(1), "A wander closes exactly one cell.");
+		Assert.That(host.FacingDirection, Is.EqualTo(Vector2.Left), "Up, Down, Left, Right in order - index 2 is Left.");
+	}
+
+	[Test]
+	public void ChargingBeetleBehavior_WanderSkipsWalledDirections()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0))
+		{
+			// Up and Right are walls; only Down and Left remain open.
+			IsWallAtFunc = position =>
+				position == new GridPosition(0, -1) || position == new GridPosition(1, 0)
+		};
+		FakeCombatant player = new(new GridPosition(3, 4));
+		host.NextMoveResult = EnemyActionResult.Moved;
+		host.RandomIndexToReturn = 1; // Second of the two remaining open directions (Down, Left).
+
+		new ChargingBeetleBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(host.FacingDirection, Is.EqualTo(Vector2.Left));
+	}
+
+	[Test]
+	public void ChargingBeetleBehavior_IdlesWhenWalledInOnEveryCardinalSide()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0))
+		{
+			IsWallAtFunc = position =>
+				position == new GridPosition(1, 0) ||
+				position == new GridPosition(-1, 0) ||
+				position == new GridPosition(0, 1) ||
+				position == new GridPosition(0, -1)
+		};
+		FakeCombatant player = new(new GridPosition(3, 4));
+
+		EnemyActionResult result = new ChargingBeetleBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Idle));
+		Assert.That(host.MoveForwardCallCount, Is.EqualTo(0));
 	}
 
 	[Test]
@@ -246,6 +358,7 @@ public sealed class EnemyMovementBehaviorTests
 		public int TurnLeftCallCount { get; private set; }
 		public int TurnRightCallCount { get; private set; }
 		public Func<GridPosition, bool> IsWallAtFunc { get; set; } = _ => false;
+		public int RandomIndexToReturn { get; set; }
 
 		public FakeMovementHost(GridPosition gridPosition)
 		{
@@ -253,6 +366,8 @@ public sealed class EnemyMovementBehaviorTests
 		}
 
 		public bool IsWallAt(GridPosition position) => IsWallAtFunc(position);
+
+		public int NextRandomIndex(int exclusiveUpperBound) => RandomIndexToReturn;
 
 		public void SetFacingDirection(Vector2 direction)
 		{

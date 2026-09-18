@@ -70,6 +70,11 @@ public interface IEnemyMovementHost
 
 	bool IsWallAt(GridPosition position);
 
+	// A deterministic draw in [0, exclusiveUpperBound), for behaviors that
+	// need to pick among several equally-valid options (e.g. ChargingBeetle's
+	// wander) without breaking this game's seeded reproducibility.
+	int NextRandomIndex(int exclusiveUpperBound);
+
 	EnemyActionResult TryMoveForward(
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants);
@@ -151,17 +156,26 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 	}
 }
 
-// Prepares for one turn (visibly locking a charge direction toward the
-// player, exactly like ChasePlayerBehavior's telegraph), then charges up to
-// two cells in that direction on the next turn. Each cell of the charge is
+// Priority order, decided fresh every non-charging turn: (1) if the player
+// is within charge range on a clear orthogonal lane, telegraph for one turn
+// (visibly locking that lane, like ChasePlayerBehavior's telegraph) and
+// charge up to two cells along it on the next - each cell of the charge is
 // one TryMoveForward call, so the existing attack-before-move check inside
 // it already makes the beetle attack instead of moving onto an occupied
-// cell, and a Blocked/Attacked result already ends the charge early - no
-// new combat or forced-movement code needed here, only the up-to-two-steps
-// loop. First tactical-slice enemy (NEXT_STEPS roadmap item 3).
+// cell, and a Blocked/Attacked result already ends the charge early; (2)
+// otherwise wander one cell into a random open cardinal direction (no
+// chase, no telegraph - this is not a pathfinding pursuit like
+// ChasePlayerBehavior, only the in-range straight lane draws the beetle
+// toward the player). First tactical-slice enemy (NEXT_STEPS roadmap item
+// 3).
 public sealed class ChargingBeetleBehavior : IEnemyMovementBehavior
 {
 	private const int ChargeDistanceCells = 2;
+
+	private static readonly Vector2[] CardinalDirections =
+	{
+		Vector2.Up, Vector2.Down, Vector2.Left, Vector2.Right
+	};
 
 	public Vector2 InitialFacingDirection => Vector2.Down;
 	public bool ShowsFacingIndicatorInitially => false;
@@ -172,29 +186,106 @@ public sealed class ChargingBeetleBehavior : IEnemyMovementBehavior
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)
 	{
-		if (!host.HasPreparedMove)
+		if (host.HasPreparedMove)
 		{
-			if (!ChaseTowardPlayer.TryPrepare(host, player.GridPosition))
-				return EnemyActionResult.Idle;
+			host.SetHasPreparedMove(false);
+			host.SetFacingIndicatorVisible(false);
 
+			EnemyActionResult result = EnemyActionResult.Blocked;
+
+			for (int step = 0; step < ChargeDistanceCells; step++)
+			{
+				result = host.TryMoveForward(occupiedEnemyPositions, combatants);
+
+				if (result.Kind != EnemyActionKind.Moved)
+					break;
+			}
+
+			return result;
+		}
+
+		Vector2? chargeLane = FindClearChargeDirection(host, player.GridPosition);
+
+		if (chargeLane != null)
+		{
+			host.SetFacingDirection(chargeLane.Value);
+			host.SetFacingIndicatorVisible(true);
 			host.SetHasPreparedMove(true);
 			return EnemyActionResult.Prepared;
 		}
 
-		host.SetHasPreparedMove(false);
-		host.SetFacingIndicatorVisible(false);
+		return Wander(host, occupiedEnemyPositions, combatants);
+	}
 
-		EnemyActionResult result = EnemyActionResult.Blocked;
+	// An orthogonal lane, no farther than the charge itself can reach -
+	// null when the player is off-axis, out of range, or on-axis but a wall
+	// sits somewhere between the beetle and the player's cell.
+	private static Vector2? FindClearChargeDirection(IEnemyMovementHost host, GridPosition player)
+	{
+		GridPosition start = host.GridPosition;
 
-		for (int step = 0; step < ChargeDistanceCells; step++)
+		if (start.Y == player.Y && start.X != player.X &&
+			Math.Abs(player.X - start.X) <= ChargeDistanceCells)
 		{
-			result = host.TryMoveForward(occupiedEnemyPositions, combatants);
-
-			if (result.Kind != EnemyActionKind.Moved)
-				break;
+			int stepX = player.X > start.X ? 1 : -1;
+			return IsLaneClear(host, start, player, stepX, 0) ? new Vector2(stepX, 0) : null;
 		}
 
-		return result;
+		if (start.X == player.X && start.Y != player.Y &&
+			Math.Abs(player.Y - start.Y) <= ChargeDistanceCells)
+		{
+			int stepY = player.Y > start.Y ? 1 : -1;
+			return IsLaneClear(host, start, player, 0, stepY) ? new Vector2(0, stepY) : null;
+		}
+
+		return null;
+	}
+
+	// One immediate, untelegraphed step into a random cardinal direction
+	// that is not a wall - a plain wander, not a route toward the player.
+	private static EnemyActionResult Wander(
+		IEnemyMovementHost host,
+		HashSet<GridPosition> occupiedEnemyPositions,
+		IReadOnlyList<ICombatant> combatants)
+	{
+		List<Vector2> openDirections = new();
+
+		foreach (Vector2 direction in CardinalDirections)
+		{
+			GridPosition candidate = new(
+				host.GridPosition.X + (int)direction.X,
+				host.GridPosition.Y + (int)direction.Y);
+
+			if (!host.IsWallAt(candidate))
+				openDirections.Add(direction);
+		}
+
+		if (openDirections.Count == 0)
+			return EnemyActionResult.Idle;
+
+		Vector2 chosen = openDirections[host.NextRandomIndex(openDirections.Count)];
+		host.SetFacingDirection(chosen);
+		return host.TryMoveForward(occupiedEnemyPositions, combatants);
+	}
+
+	private static bool IsLaneClear(
+		IEnemyMovementHost host,
+		GridPosition start,
+		GridPosition goal,
+		int stepX,
+		int stepY)
+	{
+		GridPosition current = new(start.X + stepX, start.Y + stepY);
+
+		while (current != goal)
+		{
+			if (host.IsWallAt(current))
+				return false;
+
+			current = new GridPosition(current.X + stepX, current.Y + stepY);
+		}
+
+		return true;
 	}
 }
 

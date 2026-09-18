@@ -1,6 +1,6 @@
 # Game Design
 
-Reviewed against main `420aadcb515884bc3c5d4ff1622a7abc40ecde8d` on 2026-09-16 (UTC). Implemented status is based on source inspection. Planned features are labeled below.
+Reviewed against main `420aadcb515884bc3c5d4ff1622a7abc40ecde8d` on 2026-09-16 (UTC). Implemented status is based on source inspection. Planned features are labeled below. "Player action rules" was added on 2026-09-18 from [Player rules handoff](Claude_Player_Rules_Handoff.md), which reviewed `be1eeba`. It is a proposal; none of it is implemented.
 
 ## Core experience
 
@@ -22,7 +22,7 @@ The mechanical reference point is the non-rhythm Bard mode of *Crypt of the Necr
 
 **Systemic, not scripted.** The target shape is generic - an attack or effect names affected cells, entities on those cells receive it, and each entity reacts by its own rules. That single pipeline is what allows a monster to attack a merchant, a merchant to fight back, an enemy to trigger a trap, or a player to push one enemy into another, without any of those outcomes being written individually. Shopkeepers and other NPCs participate in the simulation (damageable, reactive, able to flee and leave merchandise behind) rather than existing as invulnerable UI.
 
-**Extract that pipeline late, not early.** Mechanics are implemented directly first; the shared lifecycle is extracted once several real cases demonstrate it. See the extraction checkpoint in [Next steps](NEXT_STEPS.md) and "Generalized effect or hazard frameworks" in its architecture backlog.
+**Extract that pipeline late, not early.** Mechanics are implemented directly first; the shared lifecycle is extracted once several real cases demonstrate it. See the extraction checkpoint in [Next steps](NEXT_STEPS.md) and "Generalized effect or hazard frameworks" in its architecture backlog. One narrow exception is agreed: the player's own equipment, abilities and statuses may contribute attack, dig and move rules before that checkpoint (see "Player action rules" below). That is not the general effect pipeline, and enemies do not use it.
 
 **Structure stays conventional.** Procedural stage -> encounters -> money and items -> shop -> stronger build -> boss -> next stage -> death or restart, eventually around three stages with substages.
 
@@ -47,6 +47,47 @@ Current behavior to preserve during refactoring:
 - Enemy execution stops when the player dies.
 - Camera and menu actions consume no turns.
 - Spike traps tick and damage in an environment phase after enemies act, before the turn's snapshot/autosave.
+- There is no Wait command. It was removed on purpose, so do not restore it as a side effect of other work.
+
+## Player action rules (proposed, not implemented)
+
+Roadmap: [Next steps](NEXT_STEPS.md) step 5.
+
+**Today** one directional input runs a fixed sequence in `TurnResolver.ResolvePlayerAction`:
+1. Attack if a target is in range.
+2. Otherwise dig the terrain ahead.
+3. Otherwise stop if blocked.
+4. Otherwise move.
+
+Only the equipped weapon (attack) and the digging tool (dig) change what happens. Nothing else contributes.
+
+**Proposed.** The sequence stays. Each step collects rules from its own category:
+
+- **Three categories only.** Attack, dig and move. There is no universal event system, object-pair interaction table or generic effect language.
+- **Rules belong to a source.** A source is an equipped item, an inherent player ability, or an active temporary status. Unequipped inventory contributes nothing. Removing the item or ending the status removes its rules.
+- **Stacking and overriding are explicit.** Each rule has a visible priority. Separately, it declares whether it adds to, replaces or cancels the result.
+  - The base (for example, the weapon) is applied first, and additions stack on top. A laser dealing 2 with a mushroom's +3 deals 5.
+  - When two replacements conflict, a fixed tie-breaker picks the winner.
+  - A cancellation cannot be undone by a later modifier.
+- **Cancelled actions end the turn.** A cancelled attack does not fall through to digging or moving. Only "no attack available" falls through.
+- **Base content never changes.** A temporary bonus never alters the weapon itself. When the status ends, the weapon is exactly as before, for the player and for anyone else using it.
+- **Positions are relative.** Rule positions use `(Forward, Right)` from an origin and a facing. For example, front is `(1,0)`, front-left is `(1,-1)`, and two ahead and one left is `(2,-1)`. The origin is usually the player; for a dig effect it can be the wall being dug. The existing weapon offsets already use this convention.
+- **Move rules have two timings.** Rules that change reach or permission apply before the move. Trail and landing effects apply only after a successful move; a blocked move triggers none.
+- **Enemies keep their own behaviors.** "The same rules apply to everyone" still covers terrain, traps and forced movement. Player rules describe the player's own capabilities; enemy AI does not read them.
+- **Debug history explains results.** For each resolved action it shows which rules applied, in what order, whether their conditions held, what they changed and what was finally affected.
+
+Example mechanics that drive the design are below. None is implemented, and each needs its open questions settled first:
+
+- **Laser.** Activates only if an enemy is in its detection area before the first wall; an enemy behind a wall cannot trigger it. Then it hits every eligible enemy along the beam until a wall or the map edge. Open: is detection along the whole beam or adjacent-only?
+- **Digger.** Digs the wall ahead and damages things around that wall, never the player. The player does not move into the wall. Open questions:
+  - Four or eight neighbors?
+  - Do walls block the splash?
+  - Does it happen on every dig or only on destruction?
+  - Which objects are damageable?
+- **Mushroom.** A temporary status that adds an attack bonus and expires cleanly. Open questions:
+  - Is its duration "20 rooms" or 20 turns?
+  - What happens when it is picked up again (refresh or stack)?
+  - Exactly when does it expire?
 
 ## Weapons
 
@@ -63,6 +104,8 @@ The player has a separate Basic Shovel with terrain damage 1. Weapon selection u
 
 Add one weapon at a time with a distinct tactical use.
 Define blocking and target priority when introducing non-linear patterns.
+
+Wall blocking today stops the whole pattern at its first wall cell. That is right for ordered lines like the swords and a laser beam. For a surrounding area, one wall would wrongly suppress unrelated cells, so an area pattern needs per-cell filtering and an explicit line-of-sight rule. Keep the current sword behavior. Decide area line of sight explicitly; do not let it fall out of the code.
 
 ## Enemies
 
@@ -122,7 +165,7 @@ Separately, the last 10 completed gameplay turns plus their starting state are r
 
 This is diagnostic history, not ten prior floors and not a player rewind mechanic. It remains available after death or victory until restart. See [Save and debug history](SAVE_AND_DEBUG_HISTORY.md).
 
-A separate authoring tool - place terrain, enemies and the player on any cell, then play and save that state as a reloadable scenario - is specified in [Debug scenario editor](DEBUG_SCENARIO_EDITOR.md) and is the next thing to build. It exists because emergent interactions have to be constructed and replayed to be validated at all.
+A separate authoring tool - place terrain, enemies and the player on any cell, then play and save that state as a reloadable scenario - is specified in [Debug scenario editor](DEBUG_SCENARIO_EDITOR.md) and is in progress (roadmap step 4). It exists because emergent interactions have to be constructed and replayed to be validated at all.
 
 ## Progression
 
@@ -149,7 +192,8 @@ Narrative details remain open.
 
 ## Deferred decisions
 
-- Final weapon roster and additional equipment slots beyond weapon plus digging tool.
+- Final weapon roster and additional equipment slots beyond weapon plus digging tool. Player action rules adapt the existing two slots first, not a new inventory system.
+- Player action rules: status duration unit (rooms or turns), refresh/stack and expiry; whether a prepared attack keeps the modifiers from when it started or recomputes them; laser activation range; digger splash shape and targets; area line of sight; the priority tie-breaker.
 - Enemy activation or awareness outside the player's room.
 - Exit requirements.
 - Permanent stat upgrades versus content unlocks.
