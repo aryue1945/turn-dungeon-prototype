@@ -134,6 +134,8 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	void IEnemyMovementHost.TurnLeft() => TurnLeft();
 	void IEnemyMovementHost.TurnRight() => TurnRight();
 
+	bool IEnemyMovementHost.IsWallAt(GridPosition position) => _isWallAt(position);
+
 	EnemyActionResult IEnemyMovementHost.TryMoveForward(
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants)

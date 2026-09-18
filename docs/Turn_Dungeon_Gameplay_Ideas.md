@@ -2,7 +2,7 @@
 
 Reviewed against main `147df77146dd0ad7c53355e9c77da119f29f5b00` on 2026-09-15 (UTC). Implemented status is based on source inspection. This file is an exploratory backlog, not an implementation checklist. [Next steps](NEXT_STEPS.md) is the current work order.
 
-Implemented foundation: connected zones on a shared grid, walkable doors that open visually on actor occupancy, shovel digging and distinct breakable walls, plus data-driven monster mods. Enemies can cross passages but lack obstacle-aware navigation. Tree/growing-wall experiments exist in code/tests and remain disabled. Meteors, switches and the other puzzle systems below are ideas.
+Implemented foundation: connected zones on a shared grid, walkable doors that open visually on actor occupancy, shovel digging and distinct breakable walls, plus data-driven monster mods. Chase-type enemies route around walls toward the player (`EnemyPathfinding`, grid A*) rather than only checking the cell straight ahead. Tree/growing-wall experiments exist in code/tests and remain disabled. Meteors, switches and the other puzzle systems below are ideas.
 
 
 ## Core Direction

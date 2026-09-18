@@ -1,5 +1,6 @@
 using Godot;
 using NUnit.Framework;
+using System;
 using System.Collections.Generic;
 
 // Movement behaviors depend only on IEnemyMovementHost and ICombatant (for
@@ -37,6 +38,48 @@ public sealed class EnemyMovementBehaviorTests
 		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Moved));
 		Assert.That(host.HasPreparedMove, Is.False);
 		Assert.That(host.MoveForwardCallCount, Is.EqualTo(1));
+	}
+
+	[Test]
+	public void ChasePlayerBehavior_RoutesAroundAWallBlockingTheDirectPath()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0))
+		{
+			// Walls block the direct path and the detour above it, leaving
+			// only a route through (0, 1) below.
+			IsWallAtFunc = position =>
+				position == new GridPosition(1, 0) ||
+				position == new GridPosition(1, -1)
+		};
+		FakeCombatant player = new(new GridPosition(2, 0));
+
+		EnemyActionResult result = new ChasePlayerBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Prepared));
+		Assert.That(host.FacingDirection, Is.EqualTo(Vector2.Down));
+	}
+
+	[Test]
+	public void ChasePlayerBehavior_SkipsTheTurnWhenNoRouteExists()
+	{
+		FakeMovementHost host = new(new GridPosition(0, 0))
+		{
+			// Walls on all four sides box the enemy in completely.
+			IsWallAtFunc = position =>
+				position == new GridPosition(1, 0) ||
+				position == new GridPosition(-1, 0) ||
+				position == new GridPosition(0, 1) ||
+				position == new GridPosition(0, -1)
+		};
+		FakeCombatant player = new(new GridPosition(5, 5));
+
+		EnemyActionResult result = new ChasePlayerBehavior().TakeTurn(
+			host, player, new HashSet<GridPosition>(), new List<ICombatant>());
+
+		Assert.That(result.Kind, Is.EqualTo(EnemyActionKind.Idle));
+		Assert.That(host.HasPreparedMove, Is.False);
+		Assert.That(host.MoveForwardCallCount, Is.EqualTo(0));
 	}
 
 	[Test]
@@ -202,11 +245,14 @@ public sealed class EnemyMovementBehaviorTests
 		public int MoveForwardCallCount { get; private set; }
 		public int TurnLeftCallCount { get; private set; }
 		public int TurnRightCallCount { get; private set; }
+		public Func<GridPosition, bool> IsWallAtFunc { get; set; } = _ => false;
 
 		public FakeMovementHost(GridPosition gridPosition)
 		{
 			GridPosition = gridPosition;
 		}
+
+		public bool IsWallAt(GridPosition position) => IsWallAtFunc(position);
 
 		public void SetFacingDirection(Vector2 direction)
 		{
