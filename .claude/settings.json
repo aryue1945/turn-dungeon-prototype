@@ -1,0 +1,7 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(gh pr create --title 'Add wall-aware pathfinding and scenario save/load' --body ' *)"
+    ]
+  }
+}
