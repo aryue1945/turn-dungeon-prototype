@@ -12,6 +12,16 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	private IEnemyMovementBehavior _movementBehavior;
 	private Func<GridPosition, bool> _isWallAt;
 
+	// Seeded from this enemy's spawn cell rather than its Guid InstanceId
+	// (which is fresh every spawn) or a real-time source, so a behavior
+	// drawing from it (e.g. ChargingBeetleBehavior's wander) stays
+	// reproducible for a fixed run - same spawn position, same sequence of
+	// "random" choices. Not captured/restored across save/resume, matching
+	// the accepted "exact RNG continuation" gap in NEXT_STEPS' Architecture
+	// backlog - a resumed run reseeds from the (now-moved) restored
+	// position instead of continuing the exact original stream.
+	private Random _random;
+
 	public MonsterDefinition Definition { get; private set; }
 	public bool IsAlive =>
 		_state.IsAlive && !IsQueuedForDeletion();
@@ -49,6 +59,7 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 		_state.SetFacing(_movementBehavior.InitialFacingDirection);
 		_state.SetAttack(Attack);
 		_isWallAt = isWallAt;
+		_random = new Random(HashCode.Combine(gridPosition.X, gridPosition.Y));
 	}
 
 	public override void _Ready()
@@ -135,6 +146,8 @@ public partial class Enemy : CharacterBody2D, ICombatant, IEnemyMovementHost
 	void IEnemyMovementHost.TurnRight() => TurnRight();
 
 	bool IEnemyMovementHost.IsWallAt(GridPosition position) => _isWallAt(position);
+
+	int IEnemyMovementHost.NextRandomIndex(int exclusiveUpperBound) => _random.Next(exclusiveUpperBound);
 
 	EnemyActionResult IEnemyMovementHost.TryMoveForward(
 		HashSet<GridPosition> occupiedEnemyPositions,
