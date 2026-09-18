@@ -68,9 +68,31 @@ public interface IEnemyMovementHost
 	void TurnLeft();
 	void TurnRight();
 
+	bool IsWallAt(GridPosition position);
+
 	EnemyActionResult TryMoveForward(
 		HashSet<GridPosition> occupiedEnemyPositions,
 		IReadOnlyList<ICombatant> combatants);
+}
+
+// Shared by the chase-type behaviors below: locks facing toward the first
+// step of a wall-avoiding route to the player (see EnemyPathfinding), or
+// reports failure when the player is unreachable so the caller can skip the
+// turn instead of telegraphing a move into a wall.
+internal static class ChaseTowardPlayer
+{
+	public static bool TryPrepare(IEnemyMovementHost host, GridPosition playerGridPosition)
+	{
+		Vector2? direction = EnemyPathfinding.FindNextStepDirection(
+			host.GridPosition, playerGridPosition, host.IsWallAt);
+
+		if (direction == null)
+			return false;
+
+		host.SetFacingDirection(direction.Value);
+		host.SetFacingIndicatorVisible(true);
+		return true;
+	}
 }
 
 // One reusable, swappable piece of monster AI. Both built-in monsters and
@@ -110,8 +132,12 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 	{
 		if (!host.HasPreparedMove)
 		{
-			// Preparing is the entire action for this turn.
-			PrepareMove(host, player.GridPosition);
+			// Preparing is the entire action for this turn. No route to the
+			// player means no move to prepare - skip the turn instead of
+			// telegraphing a direction that only leads into a wall.
+			if (!ChaseTowardPlayer.TryPrepare(host, player.GridPosition))
+				return EnemyActionResult.Idle;
+
 			host.SetHasPreparedMove(true);
 			return EnemyActionResult.Prepared;
 		}
@@ -122,24 +148,6 @@ public sealed class ChasePlayerBehavior : IEnemyMovementBehavior
 		host.SetHasPreparedMove(false);
 		host.SetFacingIndicatorVisible(false);
 		return result;
-	}
-
-	private static void PrepareMove(
-		IEnemyMovementHost host,
-		GridPosition playerGridPosition)
-	{
-		int deltaX = playerGridPosition.X - host.GridPosition.X;
-		int deltaY = playerGridPosition.Y - host.GridPosition.Y;
-
-		if (deltaX == 0 && deltaY == 0)
-			return;
-
-		Vector2 direction = Math.Abs(deltaX) > Math.Abs(deltaY)
-			? new Vector2(Math.Sign(deltaX), 0)
-			: new Vector2(0, Math.Sign(deltaY));
-
-		host.SetFacingDirection(direction);
-		host.SetFacingIndicatorVisible(true);
 	}
 }
 
@@ -166,7 +174,9 @@ public sealed class ChargingBeetleBehavior : IEnemyMovementBehavior
 	{
 		if (!host.HasPreparedMove)
 		{
-			PrepareCharge(host, player.GridPosition);
+			if (!ChaseTowardPlayer.TryPrepare(host, player.GridPosition))
+				return EnemyActionResult.Idle;
+
 			host.SetHasPreparedMove(true);
 			return EnemyActionResult.Prepared;
 		}
@@ -185,24 +195,6 @@ public sealed class ChargingBeetleBehavior : IEnemyMovementBehavior
 		}
 
 		return result;
-	}
-
-	private static void PrepareCharge(
-		IEnemyMovementHost host,
-		GridPosition playerGridPosition)
-	{
-		int deltaX = playerGridPosition.X - host.GridPosition.X;
-		int deltaY = playerGridPosition.Y - host.GridPosition.Y;
-
-		if (deltaX == 0 && deltaY == 0)
-			return;
-
-		Vector2 direction = Math.Abs(deltaX) > Math.Abs(deltaY)
-			? new Vector2(Math.Sign(deltaX), 0)
-			: new Vector2(0, Math.Sign(deltaY));
-
-		host.SetFacingDirection(direction);
-		host.SetFacingIndicatorVisible(true);
 	}
 }
 
